@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Trash2, GripVertical, Settings2, Type, FileText, List, Upload, Edit } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Settings2, Type, FileText, List, Upload, Edit, CheckSquare, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FormFieldConfig } from '@/lib/db';
 
@@ -70,6 +70,8 @@ export function RoyalFormBuilder({ fields, onChange }: RoyalFormBuilderProps) {
                     { type: 'number', icon: Settings2, label: 'Number' },
                     { type: 'select', icon: GripVertical, label: 'Dropdown' },
                     { type: 'file', icon: Upload, label: 'File Upload' },
+                    { type: 'checkbox', icon: CheckSquare, label: 'Declaration' },
+                    { type: 'info', icon: Info, label: 'Instructions' },
                 ].map((tool) => (
                     <Button
                         key={tool.type}
@@ -196,7 +198,7 @@ function FieldConfigurator({ field, onUpdate, onClose }: {
         <div className="mt-8 space-y-6">
             <div className="space-y-4">
                 <div className="space-y-2">
-                    <Label className="text-slate-300">Question Label</Label>
+                    <Label className="text-slate-300">{field.type === 'info' ? 'Title' : 'Question Label'}</Label>
                     <Input
                         value={field.label}
                         onChange={(e) => onUpdate({ ...field, label: e.target.value })}
@@ -220,37 +222,53 @@ function FieldConfigurator({ field, onUpdate, onClose }: {
                                 <SelectItem value="number">Number</SelectItem>
                                 <SelectItem value="select">Dropdown</SelectItem>
                                 <SelectItem value="file">File Upload</SelectItem>
+                                <SelectItem value="checkbox">Checkbox / Declaration</SelectItem>
+                                <SelectItem value="info">Instruction Block</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
 
-                    <div className="space-y-2">
-                        <Label className="text-slate-300">Required?</Label>
-                        <div
-                            className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors ${field.required
-                                ? 'bg-[#D4AF37]/10 border-[#D4AF37]/50 text-[#D4AF37]'
-                                : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
-                                }`}
-                            onClick={() => onUpdate({ ...field, required: !field.required })}
-                        >
-                            <Checkbox
-                                checked={field.required}
-                                onCheckedChange={(c) => onUpdate({ ...field, required: !!c })}
-                                className="border-white/20 data-[state=checked]:bg-[#D4AF37] data-[state=checked]:text-black"
-                            />
-                            <span className="text-sm font-medium">Yes, Mandatory</span>
+                    {field.type !== 'info' && (
+                        <div className="space-y-2">
+                            <Label className="text-slate-300">Required?</Label>
+                            <div
+                                className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors ${field.required
+                                    ? 'bg-[#D4AF37]/10 border-[#D4AF37]/50 text-[#D4AF37]'
+                                    : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                                    }`}
+                                onClick={() => onUpdate({ ...field, required: !field.required })}
+                            >
+                                <Checkbox
+                                    checked={field.required}
+                                    onCheckedChange={(c) => onUpdate({ ...field, required: !!c })}
+                                    className="border-white/20 data-[state=checked]:bg-[#D4AF37] data-[state=checked]:text-black"
+                                />
+                                <span className="text-sm font-medium">Yes, Mandatory</span>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 <div className="space-y-2">
-                    <Label className="text-slate-300">Placeholder / Helper Text</Label>
-                    <Input
-                        value={field.placeholder || ''}
-                        onChange={(e) => onUpdate({ ...field, placeholder: e.target.value })}
-                        className="bg-white/5 border-white/10 text-white focus:border-[#D4AF37]/50"
-                        placeholder="e.g. Enter your full name"
-                    />
+                    <Label className="text-slate-300">
+                        {field.type === 'info' ? 'Instruction Text (Body)' : field.type === 'checkbox' ? 'Declaration Text (same as label usually)' : 'Placeholder / Helper Text'}
+                    </Label>
+                    {field.type === 'info' ? (
+                        <textarea
+                            rows={4}
+                            value={field.placeholder || ''}
+                            onChange={(e) => onUpdate({ ...field, placeholder: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 text-white font-sans text-sm focus:border-[#D4AF37]/50 rounded-md p-2 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
+                            placeholder="Enter the detailed instructions here..."
+                        />
+                    ) : (
+                        <Input
+                            value={field.placeholder || ''}
+                            onChange={(e) => onUpdate({ ...field, placeholder: e.target.value })}
+                            className="bg-white/5 border-white/10 text-white focus:border-[#D4AF37]/50"
+                            placeholder="e.g. Enter your full name"
+                        />
+                    )}
                 </div>
 
                 {(field.type === 'select') && (

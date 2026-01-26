@@ -13,7 +13,11 @@ import { db, COLLECTIONS } from '@/lib/db';
 
 // ... imports
 import { CoinLoader } from '@/components/ui/CoinLoader'; // Import Loader
-import { Terminal, Music, Trophy, Gamepad2, BookOpen, Microscope, ChevronRight, Coins, Menu, Calendar, MapPin, X } from 'lucide-react'; // Icons
+import { Terminal, Music, Trophy, Gamepad2, BookOpen, Microscope, ChevronRight, Coins, Menu, Calendar, MapPin, X, Sparkles } from 'lucide-react'; // Added Sparkles
+
+// ... (imports)
+
+
 import { EVENT_CATEGORIES } from '@/lib/constants';
 import CategoriesGrid from '@/components/events/CategoriesGrid'; // Dynamic Grid
 import FloatingHeader from '@/components/FloatingHeader';
@@ -59,6 +63,10 @@ export default function LandingPage() {
     } else {
       router.push('/register/onboarding');
     }
+  };
+
+  const handleHackathonEnroll = () => {
+    router.push('/enrollment/hackathon');
   };
 
   if (loading) {
@@ -137,124 +145,57 @@ export default function LandingPage() {
 
       <main className="relative z-10 flex-1 flex flex-col items-center w-full max-w-7xl mx-auto px-4 py-8 gap-16 md:gap-24">
 
-        {/* Hero Section - Split Layout */}
-        <div className="w-full pt-28 md:pt-44">
+        {/* Hero Section - Centered Layout - Compact */}
+        <div className="w-full pt-20 md:pt-32 flex flex-col items-center text-center max-w-5xl mx-auto min-h-[90vh] md:min-h-0 justify-center">
 
-          {/* DESKTOP LAYOUT (Hidden on Mobile) */}
-          <div className="hidden md:grid grid-cols-2 items-center gap-4 lg:gap-12 w-full">
-            {/* Left: Text & Action */}
-            <div className="flex flex-col items-start text-left space-y-6 animate-in slide-in-from-left duration-1000 pl-8">
-              <div>
-                <h1 className={cn("text-6xl lg:text-[7rem] font-bold uppercase tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-b from-[#DAD0BD] via-[#f7e8b5] to-[#b91c1c] drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)]", cinzel.className)}>
-                  Aadhrita
-                  <span className="block text-4xl lg:text-5xl text-[#D4AF37] tracking-[0.2em] mt-2">2026</span>
-                </h1>
-                <p className={cn("text-xl text-zinc-400 mt-4 tracking-widest uppercase font-medium")}>
-                  A Legacy Reawakened.
-                </p>
-              </div>
+          <div className="animate-in fade-in zoom-in duration-1000 space-y-6">
 
-              <div className="flex items-center gap-4 py-4">
-                <div className="h-px w-12 bg-[#D4AF37]" />
-                <span className="text-2xl font-black text-white tracking-widest uppercase font-mono">26 - 27 FEB</span>
-              </div>
-
-              <div className="flex items-center gap-6">
-                <button
-                  onClick={() => {
-                    if (userProfile?.hasEntryPass) {
-                      router.push('/dashboard');
-                    } else if (user) {
-                      handleLogin();
-                    } else {
-                      googleLogin();
-                    }
-                  }}
-                  className="relative px-8 py-4 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 text-black font-bold text-lg rounded-full shadow-[0_0_20px_rgba(251,191,36,0.5)] hover:shadow-[0_0_35px_rgba(251,191,36,0.8)] hover:scale-105 transition-all duration-300"
-                >
-                  {userProfile?.hasEntryPass ? "Show Pass" : "Get Your Pass"}
-                </button>
-
-
-              </div>
+            {/* Logo */}
+            <div className="relative w-24 h-24 md:w-40 md:h-40 mx-auto mb-4 drop-shadow-[0_0_50px_rgba(185,28,28,0.4)]">
+              <Image
+                src="/assets/logo-red-crown.png"
+                alt="Aadhrita Logo"
+                fill
+                className="object-contain"
+                priority
+              />
             </div>
 
-            {/* Right: The Visual (Ticket) - 3D Floating Card - CLEAN */}
-            <div className="relative w-full aspect-video perspective-1000 animate-in slide-in-from-right duration-1000 delay-200">
-              <div className="
-                        relative w-full h-full 
-                        transform 
-                        rotate-y-[-12deg] 
-                        rotate-x-[5deg] 
-                        hover:rotate-y-[0deg] 
-                        hover:rotate-x-[0deg]
-                        transition-all 
-                        duration-500 
-                        ease-out 
-                        animate-float
-                    ">
-
-                <Image
-                  src="/Black and Orange Retro Live Music Ticket.png"
-                  alt="Aadhrita Entry Pass"
-                  fill
-                  className="object-contain drop-shadow-[0_30px_60px_rgba(0,0,0,0.9)]"
-                  priority
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* MOBILE LAYOUT (Hidden on Desktop) */}
-          <div className="flex md:hidden flex-col items-center gap-8 text-center">
-            {/* Header Text */}
-            <div className="space-y-2 animate-in fade-in zoom-in duration-700">
-              <h1 className={cn("text-6xl font-black uppercase tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-b from-[#DAD0BD] via-[#f7e8b5] to-[#b91c1c]", cinzel.className)}>
-                Aadhrita <span className="text-[#D4AF37] text-4xl">2026</span>
+            {/* Title */}
+            <div>
+              <h1 className={cn("text-6xl md:text-[8rem] font-bold uppercase tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-b from-[#DAD0BD] via-[#f7e8b5] to-[#b91c1c] drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)]", cinzel.className)}>
+                Aadhrita
               </h1>
-              <p className="text-sm font-bold tracking-[0.3em] text-white/80">
-                POWERED BY AADHRITA COINS
+            </div>
+
+            {/* Dates */}
+            <div className="py-2 relative">
+              {/* Revised Badge */}
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-gradient-to-r from-red-900/90 to-black/90 border border-[#D4AF37] text-[#D4AF37] px-5 py-1 text-[10px] md:text-xs font-bold uppercase tracking-[0.15em] rounded-full shadow-[0_0_25px_rgba(212,175,55,0.4)] z-10 animate-in fade-in slide-in-from-bottom-2 duration-1000 delay-500 backdrop-blur-md whitespace-nowrap">
+                <Sparkles className="w-3 h-3 text-yellow-200 fill-yellow-400 animate-pulse" />
+                <span>Revised Dates</span>
+                <Sparkles className="w-3 h-3 text-yellow-200 fill-yellow-400 animate-pulse" />
+              </div>
+
+              <div className="inline-block px-8 py-2 border-y border-[#D4AF37]/30 bg-gradient-to-r from-transparent via-[#b91c1c]/10 to-transparent relative mt-3">
+                <span className={cn("text-xl md:text-3xl font-black text-[#D4AF37] tracking-widest uppercase whitespace-nowrap", cinzel.className)}>
+                  12, 13 MARCH 2026
+                </span>
+              </div>
+            </div>
+
+            <div className="max-w-xl mx-auto space-y-4">
+              <p className={cn("text-lg md:text-2xl text-[#D4AF37] tracking-[0.2em] uppercase font-black leading-relaxed show-on-scroll drop-shadow-[0_0_15px_rgba(212,175,55,0.4)]", cinzel.className)}>
+                Powered by Aadhrita Coins
+              </p>
+
+              <div className="h-px w-24 bg-gradient-to-r from-transparent via-red-600/50 to-transparent mx-auto" />
+
+              <p className="text-[10px] md:text-xs font-bold tracking-[0.4em] text-zinc-500 uppercase pt-2">
+                A Legacy Reawakened
               </p>
             </div>
 
-            {/* The Mobile Hero: Digital Wallet Pass */}
-            <div className="relative w-[300px] h-[450px] my-4 animate-in slide-in-from-bottom duration-700 delay-100">
-              {/* Glow behind */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[250px] h-[350px] bg-red-600/20 blur-[80px] rounded-full" />
-
-              <div className="relative w-full h-full transform transition-transform hover:scale-105 duration-500">
-                <Image
-                  src="/entrypass-mobile.png"
-                  alt="Entry Pass Mobile"
-                  fill
-                  className="object-contain drop-shadow-[0_10px_40px_rgba(0,0,0,0.6)]"
-                  priority
-                />
-
-                {/* Interactive overlay hint */}
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
-                  <div className="w-12 h-1 bg-white/20 rounded-full" />
-                </div>
-              </div>
-            </div>
-
-            {/* CTA Button Matching Aesthetics */}
-            <div className="w-full px-8 animate-in slide-in-from-bottom duration-700 delay-300">
-              <Button
-                onClick={() => {
-                  if (userProfile?.hasEntryPass) {
-                    router.push('/dashboard');
-                  } else if (user) {
-                    handleLogin();
-                  } else {
-                    googleLogin();
-                  }
-                }}
-                className="w-full h-14 rounded-2xl bg-gradient-to-r from-orange-400 to-[#D4AF37] text-black font-black text-xl uppercase tracking-widest shadow-[0_0_40px_rgba(212,175,55,0.3)] hover:shadow-[0_0_60px_rgba(212,175,55,0.5)] transition-all transform hover:-translate-y-1"
-              >
-                {userProfile?.hasEntryPass ? "Show Pass" : "Get Pass"}
-              </Button>
-            </div>
           </div>
         </div>
 
@@ -316,7 +257,7 @@ export default function LandingPage() {
 
               <div className="flex flex-col gap-4 mt-4">
                 <Button
-                  onClick={handleLogin}
+                  onClick={handleHackathonEnroll}
                   disabled={loading}
                   className="h-16 text-xl font-bold bg-gradient-to-r from-red-700 to-orange-600 text-white hover:from-red-600 hover:to-orange-500 border border-orange-500/20 transition-all rounded-2xl shadow-[0_0_30px_rgba(234,88,12,0.3)] flex items-center justify-center gap-3 w-full group/btn relative overflow-hidden"
                 >

@@ -502,7 +502,7 @@ export default function HackathonEnrollmentPage() {
                                                 <li className="flex gap-2 items-start"><span className="font-bold">•</span> Team Size: <span className="font-black">2 - 4 Members</span></li>
                                                 <li className="flex gap-2 items-start"><span className="font-bold">•</span> Open to UG Students Across India | Inter-Departmental Teams Allowed.</li>
                                                 <li className="flex gap-2 items-start"><span className="font-bold">•</span> No late submissions or extensions.</li>
-                                                <li className="flex gap-2 items-start"><span className="font-bold">•</span> 24-Hour Finale Date: <span className="font-bold underline text-red-900">26th Feb 2026</span></li>
+                                                <li className="flex gap-2 items-start"><span className="font-bold">•</span> 24-Hour Finale Date: <span className="font-bold underline text-red-900">12th March  2026</span></li>
                                             </ul>
                                         </div>
                                     </div>
@@ -768,7 +768,7 @@ export default function HackathonEnrollmentPage() {
 
                                             <div className="relative pl-4 border-l-2 border-gray-300">
                                                 <p className="text-xs text-gray-500 font-bold uppercase mb-1">Finale (Offline)</p>
-                                                <p className="text-gray-900 font-bold text-lg">26-02-2026</p>
+                                                <p className="text-gray-900 font-bold text-lg">12-03-2026</p>
                                                 <p className="text-[10px] text-gray-500">24-Hour Hackathon</p>
                                             </div>
                                         </div>

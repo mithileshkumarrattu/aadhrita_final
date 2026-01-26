@@ -6,8 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EventFormConfig } from '@/lib/db';
+import { Checkbox } from '@/components/ui/checkbox';
 import { uploadFile } from '@/lib/storage'; // Import uploadFile
-import { Loader2 } from 'lucide-react'; // Import Loader
+import { Loader2, Info } from 'lucide-react'; // Import Loader, Info icon
 
 interface DynamicFormProps {
     config: EventFormConfig;
@@ -140,6 +141,27 @@ export function DynamicForm({ config, formData, setFormData }: DynamicFormProps)
                                     File Uploaded: ...{formData[field.id].slice(-20)}
                                 </div>
                             )}
+                        </div>
+                    ) : field.type === 'checkbox' ? (
+                        <div className="flex items-start gap-3 p-3 border border-slate-200 rounded-md bg-slate-50 hover:bg-slate-100 transition-colors">
+                            <Checkbox
+                                id={field.id}
+                                checked={!!formData[field.id]}
+                                onCheckedChange={(checked) => handleChange(field.id, checked)}
+                                required={field.required}
+                                className="mt-1 data-[state=checked]:bg-[#D4AF37] data-[state=checked]:border-[#D4AF37] border-slate-300"
+                            />
+                            <Label htmlFor={field.id} className="text-sm text-slate-800 leading-relaxed cursor-pointer font-medium">
+                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                            </Label>
+                        </div>
+                    ) : field.type === 'info' ? (
+                        <div className="bg-blue-50 text-blue-900 text-sm p-4 rounded-lg border border-blue-100 flex gap-3 items-start">
+                            <Info className="w-5 h-5 shrink-0 text-blue-600 mt-0.5" />
+                            <div className="space-y-1">
+                                <p className="font-bold text-blue-800">{field.label}</p>
+                                {field.placeholder && <p className="whitespace-pre-wrap opacity-90 text-blue-700/80">{field.placeholder}</p>}
+                            </div>
                         </div>
                     ) : (
                         // Default Text

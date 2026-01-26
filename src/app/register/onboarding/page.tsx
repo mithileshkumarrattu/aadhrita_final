@@ -56,6 +56,7 @@ export default function OnboardingPage() {
         fullName: '', mobileNumber: '', email: '', gender: '', photoUrl: '',
         collegeType: 'OTHER', regNo: '', collegeName: '', degreeBranch: '', yearOfStudy: '', cityState: '', idCardUrl: '',
         accommodationRequired: false, arrivalDate: '', departureDate: '', numberOfDays: 0, numberOfBoys: 0, numberOfGirls: 0,
+        accommodationDates: [], // Initialize to avoid undefined
         paidEventIds: [], aftCoins: 0, registrationType: 'Individual', completed: false
     });
 
@@ -352,9 +353,15 @@ export default function OnboardingPage() {
                     return `Team Name required for ${event.title}`;
                 }
 
-                if (event.formConfig?.askPptUrl && !resp.customResponses?.pptUrl) return `PPT URL required for ${event.title}`;
-                if (event.formConfig?.customFields) {
-                    for (const f of event.formConfig.customFields) if (f.required && !resp.customResponses?.[f.id]) return `${f.label} is required`;
+                // Skip custom fields validation for Team Members (Join Mode)
+                const isTeamEvent = event.minTeamSize > 1;
+                const isJoiner = isTeamEvent && !resp.isTeamLeader;
+
+                if (!isJoiner) {
+                    if (event.formConfig?.askPptUrl && !resp.customResponses?.pptUrl) return `PPT URL required for ${event.title}`;
+                    if (event.formConfig?.customFields) {
+                        for (const f of event.formConfig.customFields) if (f.required && !resp.customResponses?.[f.id]) return `${f.label} is required`;
+                    }
                 }
             }
             return null;
@@ -634,7 +641,13 @@ export default function OnboardingPage() {
                                                             : "bg-gray-50 border-gray-200 text-gray-500 hover:border-amber-300"
                                                     )}
                                                 >
-                                                    <div className="text-xs font-bold uppercase">{new Date(date.split('-').reverse().join('-')).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}</div>
+                                                    <div className="text-xs font-bold uppercase">
+                                                        {(() => {
+                                                            const parts = date.split('-'); // 25-02-2026
+                                                            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                                                            return `${parts[0]} ${months[parseInt(parts[1]) - 1]}`;
+                                                        })()}
+                                                    </div>
                                                     <div className="text-[10px] opacity-70">12PM - 12PM</div>
                                                 </div>
                                             ))}

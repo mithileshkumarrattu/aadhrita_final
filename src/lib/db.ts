@@ -128,7 +128,7 @@ export interface EventResponseData {
 export interface FormFieldConfig {
     id: string; // key for storage e.g. 'theme'
     label: string;
-    type: 'text' | 'file' | 'select' | 'textarea' | 'number';
+    type: 'text' | 'file' | 'select' | 'textarea' | 'number' | 'checkbox' | 'info';
     options?: string[]; // For select
     required: boolean;
     placeholder?: string;

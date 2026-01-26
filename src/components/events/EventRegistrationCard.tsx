@@ -213,14 +213,17 @@ export function EventRegistrationCard({
                     </div>
                 )}
 
-                {/* 2. Dynamic Questions */}
-                <div className={cn("space-y-4", event.minTeamSize > 1 && "pt-4 border-t border-gray-100")}>
-                    <DynamicForm
-                        config={{ ...config, askTeamName: false }} // Disable standard team name since we handled it
-                        formData={response.customResponses || {}}
-                        setFormData={handleDynamicFormSet}
-                    />
-                </div>
+                {/* 2. Dynamic Questions (Only for Individual or Team Leader) */}
+                {/* Logic: If it's a team event (>1) and user is NOT leader, skip questions. Else show. */}
+                {!(event.minTeamSize > 1 && !response.isTeamLeader) && (
+                    <div className={cn("space-y-4", event.minTeamSize > 1 && "pt-4 border-t border-gray-100")}>
+                        <DynamicForm
+                            config={{ ...config, askTeamName: false }} // Disable standard team name since we handled it
+                            formData={response.customResponses || {}}
+                            setFormData={handleDynamicFormSet}
+                        />
+                    </div>
+                )}
 
             </div>
         </div>
