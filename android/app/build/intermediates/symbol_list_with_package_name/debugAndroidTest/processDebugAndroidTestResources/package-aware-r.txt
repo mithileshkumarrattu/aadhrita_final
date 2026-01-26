@@ -1,0 +1,3 @@
+com.mvgr.student.test
+style WhiteBackgroundDialogTheme
+style WhiteBackgroundTheme

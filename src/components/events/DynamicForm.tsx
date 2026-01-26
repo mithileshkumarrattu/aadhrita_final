@@ -1,0 +1,159 @@
+'use client';
+
+import React from 'react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EventFormConfig } from '@/lib/db';
+import { uploadFile } from '@/lib/storage'; // Import uploadFile
+import { Loader2 } from 'lucide-react'; // Import Loader
+
+interface DynamicFormProps {
+    config: EventFormConfig;
+    formData: any;
+    setFormData: (data: any) => void;
+}
+
+export function DynamicForm({ config, formData, setFormData }: DynamicFormProps) {
+    if (!config) return null;
+
+    const handleChange = (field: string, value: any) => {
+        setFormData((prev: any) => ({ ...prev, [field]: value }));
+    };
+
+    const [uploadingField, setUploadingField] = React.useState<string | null>(null);
+
+    const handleFileUpload = async (field: string, file: File) => {
+        try {
+            setUploadingField(field);
+            const downloadURL = await uploadFile(file, `dynamic_uploads/${field}`);
+            handleChange(field, downloadURL);
+        } catch (error) {
+            console.error("Upload failed", error);
+            // Optionally toast error here
+        } finally {
+            setUploadingField(null);
+        }
+    };
+
+    return (
+        <div className="space-y-4 animate-in slide-in-from-bottom-2">
+            {/* Standard Configured Fields */}
+            {config.askTeamName && (
+                <div className="space-y-2">
+                    <Label className="text-slate-700">Team Name <span className="text-red-500">*</span></Label>
+                    <Input
+                        placeholder="Enter your team name"
+                        value={formData.teamName || ''}
+                        onChange={(e) => handleChange('teamName', e.target.value)}
+                        required
+                        className="bg-white border-slate-200 text-slate-900 focus:border-black focus:ring-black"
+                    />
+                </div>
+            )}
+
+            {config.askPptUrl && (
+                <div className="space-y-2">
+                    <Label className="text-slate-700">Presentation URL <span className="text-red-500">*</span></Label>
+                    <Input
+                        placeholder="Google Drive / Canva Link"
+                        value={formData.pptUrl || ''}
+                        onChange={(e) => handleChange('pptUrl', e.target.value)}
+                        required
+                        className="bg-white border-slate-200 text-slate-900 focus:border-black focus:ring-black"
+                    />
+                    <p className="text-xs text-slate-500">Ensure link is publicly accessible.</p>
+                </div>
+            )}
+
+            {config.askSoundReqs && (
+                <div className="space-y-2">
+                    <Label className="text-slate-700">Sound/Track Requirements</Label>
+                    <Input
+                        placeholder="Describe tracks or instruments needed"
+                        value={formData.soundReqs || ''}
+                        onChange={(e) => handleChange('soundReqs', e.target.value)}
+                        className="bg-white border-slate-200 text-slate-900 focus:border-black focus:ring-black"
+                    />
+                </div>
+            )}
+
+            {config.askRobotSpecs && (
+                <div className="space-y-2">
+                    <Label className="text-slate-700">Robot Specifications</Label>
+                    <Input
+                        placeholder="Weight, Dimensions, Weaponry"
+                        value={formData.robotSpecs || ''}
+                        onChange={(e) => handleChange('robotSpecs', e.target.value)}
+                        className="bg-white border-slate-200 text-slate-900 focus:border-black focus:ring-black"
+                    />
+                </div>
+            )}
+
+            {/* Custom Fields Loop */}
+            {config.customFields?.map((field) => (
+                <div key={field.id} className="space-y-2">
+                    <Label className="text-slate-700">{field.label} {field.required && <span className="text-red-500">*</span>}</Label>
+
+                    {field.type === 'textarea' ? (
+                        <Textarea
+                            placeholder={field.placeholder || `Enter ${field.label}`}
+                            value={formData[field.id] || ''}
+                            onChange={(e) => handleChange(field.id, e.target.value)}
+                            required={field.required}
+                            className="bg-white border-slate-200 text-slate-900 focus:border-black focus:ring-black min-h-[100px]"
+                        />
+                    ) : field.type === 'select' ? (
+                        <Select
+                            value={formData[field.id] || ''}
+                            onValueChange={(val) => handleChange(field.id, val)}
+                            required={field.required}
+                        >
+                            <SelectTrigger className="bg-white border-slate-200 text-slate-900 focus:ring-black">
+                                <SelectValue placeholder={field.placeholder || "Select an option"} />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white border-slate-200 text-slate-900">
+                                {field.options?.map((opt, idx) => (
+                                    <SelectItem key={idx} value={opt} className="hover:bg-slate-100">{opt}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    ) : field.type === 'file' ? (
+                        <div className="space-y-2">
+                            <Input
+                                type="file"
+                                onChange={(e) => {
+                                    if (e.target.files?.[0]) handleFileUpload(field.id, e.target.files[0]);
+                                }}
+                                required={field.required && !formData[field.id]} // Only required if no value present
+                                className="bg-white border-slate-200 text-slate-900 file:bg-slate-100 file:text-slate-700 file:border-0 file:rounded-md file:mr-4 file:px-4 file:font-semibold hover:file:bg-slate-200"
+                                disabled={uploadingField === field.id}
+                            />
+                            {uploadingField === field.id && (
+                                <div className="flex items-center gap-2 text-xs text-amber-600">
+                                    <Loader2 className="w-3 h-3 animate-spin" /> Uploading...
+                                </div>
+                            )}
+                            {formData[field.id] && (typeof formData[field.id] === 'string') && (
+                                <div className="text-xs text-green-600 font-medium truncate">
+                                    File Uploaded: ...{formData[field.id].slice(-20)}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        // Default Text
+                        <Input
+                            type="text"
+                            placeholder={field.placeholder || `Enter ${field.label}`}
+                            value={formData[field.id] || ''}
+                            onChange={(e) => handleChange(field.id, e.target.value)}
+                            required={field.required}
+                            className="bg-white border-slate-200 text-slate-900 focus:border-black focus:ring-black"
+                        />
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+}
