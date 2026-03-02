@@ -1,0 +1,233 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // A user is staff if they logged in via the Faculty Portal (JWT has isStaff)
+    // OR if they are the Super Admin who logged in via Google (users doc role is admin)
+    function isStaff() {
+      return isAuthenticated() && (
+        request.auth.token.isStaff == true ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // --- USERS COLLECTION ---
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isStaff();
+      
+      allow create: if isOwner(userId) 
+        && request.resource.data.get('hasEntryPass', false) == false
+        && request.resource.data.get('hasHackathonPass', false) == false
+        && request.resource.data.get('aftCoins', 0) == 0;
+      
+      allow update: if isOwner(userId)
+        && request.resource.data.get('hasEntryPass', false) == resource.data.get('hasEntryPass', false)
+        && request.resource.data.get('hasHackathonPass', false) == resource.data.get('hasHackathonPass', false)
+        && request.resource.data.get('aftCoins', 0) == resource.data.get('aftCoins', 0)
+        && request.resource.data.get('paidEventIds', []) == resource.data.get('paidEventIds', [])
+        && (request.resource.data.get('paymentStatus', 'pending') != 'success' || resource.data.get('paymentStatus', 'pending') == 'success')
+        && (request.resource.data.get('completed', false) == false || resource.data.get('completed', false) == true);
+        
+      allow delete: if false; 
+    }
+
+    // --- COLLECTION GROUP: REGISTRATIONS ---
+    // This allows collectionGroup('registrations') queries in the Dashboard
+    match /{path=**}/registrations/{userId} {
+      // isStaff MUST be first to short-circuit before resource.data blows up on collection queries
+      allow read: if isStaff() || isOwner(userId) || (isAuthenticated() && resource != null && resource.data.userId == request.auth.uid);
+      
+      allow create: if isOwner(userId)
+        && request.resource.data.get('hasEntryPass', false) == false
+        && request.resource.data.get('hasHackathonPass', false) == false;
+        
+      allow update: if isStaff() || (isOwner(userId)
+        && request.resource.data.get('hasEntryPass', false) == resource.data.get('hasEntryPass', false)
+        && request.resource.data.get('hasHackathonPass', false) == resource.data.get('hasHackathonPass', false)
+        && (request.resource.data.get('paymentStatus', 'pending') != 'success' || resource.data.get('paymentStatus', 'pending') == 'success')
+        && (request.resource.data.get('paymentStatus', 'pending') != 'free' || resource.data.get('paymentStatus', 'pending') == 'free')
+        && (request.resource.data.get('completed', false) == false || resource.data.get('completed', false) == true));
+    }
+
+    // --- EVENTS COLLECTION ---
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if isStaff(); 
+    }
+
+    // --- TEAMS COLLECTION ---
+    match /teams/{teamId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isStaff();
+    }
+
+    // --- HACKATHON TEAMS ---
+    match /hackathon_teams/{teamId} {
+      allow read: if isStaff() || (isAuthenticated() && resource != null && (
+        request.auth.uid == resource.data.leaderId || 
+        request.auth.uid in resource.data.memberIds
+      ));
+      allow create: if isAuthenticated() 
+        && request.resource.data.get('paymentStatus', '') == 'pending';
+      allow update: if isStaff() || (isAuthenticated()
+        && (request.resource.data.get('paymentStatus', 'pending') != 'success' || resource.data.get('paymentStatus', 'pending') == 'success')
+        && (request.resource.data.get('status', 'pending') == resource.data.get('status', 'pending'))
+        && (request.resource.data.get('passTokens', []) == resource.data.get('passTokens', [])));
+    }
+    
+    match /reg_hackathon/{teamId} {
+      allow read: if isStaff() || (isAuthenticated() && resource != null && (
+        request.auth.uid == resource.data.leaderId || 
+        request.auth.uid in resource.data.memberIds
+      ));
+      allow create: if isAuthenticated() && request.resource.data.get('paymentStatus', '') == 'pending';
+      allow update: if isStaff() || (isAuthenticated() 
+        && (request.resource.data.get('paymentStatus', 'pending') != 'success' || resource.data.get('paymentStatus', 'pending') == 'success')
+        && (request.resource.data.get('status', 'pending') == resource.data.get('status', 'pending'))
+        && (request.resource.data.get('passTokens', []) == resource.data.get('passTokens', [])));
+    }
+
+    // --- FREEFIRE TEAMS ---
+    match /freefire_teams/{teamId} {
+      allow read: if isStaff() || (isAuthenticated() && resource != null && (
+        request.auth.uid == resource.data.leaderId || 
+        request.auth.uid in resource.data.memberIds
+      ));
+      allow create: if isAuthenticated() 
+        && request.resource.data.get('paymentStatus', '') == 'pending';
+      allow update: if isStaff() || (isAuthenticated()
+        && (request.resource.data.get('paymentStatus', 'pending') != 'success' || resource.data.get('paymentStatus', 'pending') == 'success'));
+    }
+
+    // --- WALLETS & ORDERS ---
+    match /wallets/{walletId} {
+      allow read: if isOwner(walletId) || isStaff();
+      allow write: if false; 
+    }
+
+    match /order_history/{orderId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isStaff());
+      allow write: if false; 
+    }
+
+    // --- PUBLIC/MISC COLLECTIONS ---
+    match /notifications/{notiId} {
+      allow read: if isAuthenticated();
+      allow write: if false; 
+    }
+
+    match /notes/{noteId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /staff_credentials/{staffId} {
+      // Allow them to look themselves up OR allow super admin to view all
+      allow read: if isStaff(); 
+      allow write: if false; 
+    }
+    
+    match /clubs/{clubId} {
+      allow read: if isAuthenticated();
+      allow write: if false; 
+      
+      match /members/{memberId} {
+        allow read: if isAuthenticated();
+        allow create: if isOwner(memberId);
+        allow update, delete: if isOwner(memberId) || isStaff();
+      }
+    }
+    
+    match /classes/{classId} {
+      allow read: if isStaff(); 
+      allow write: if false;
+    }
+
+    // --- ADMIN / CMS DATA ---
+    match /cms_content/{docId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+    
+    match /landing_carousel/{docId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+    
+    match /event_categories/{docId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+    
+    match /system/{docId} {
+      allow read: if isStaff() || isOwner(request.auth.uid);
+      allow write: if isStaff();
+    }
+    
+    match /team_members/{docId} {
+      allow read: if true; 
+      allow write: if isStaff();
+    }
+
+    // --- SECONDARY EVENT COLLECTIONS ---
+    match /hackathon/{docId} {
+      allow read: if isOwner(docId) || isStaff();
+      allow create: if isOwner(docId);
+      allow update: if isOwner(docId)
+        && (request.resource.data.get('paymentStatus', 'pending') != 'success' || resource.data.get('paymentStatus', 'pending') == 'success')
+        && (request.resource.data.get('status', 'pending') == resource.data.get('status', 'pending'))
+        && (request.resource.data.get('passTokens', []) == resource.data.get('passTokens', []));
+    }
+    
+    match /hackathon_passes/{docId} {
+      allow read: if isStaff();
+      allow write: if isStaff(); 
+    }
+
+    // --- TRANSACTIONS & ACCESS LOGS ---
+    match /transactions/{docId} {
+      allow read: if isStaff() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.get('userId', '') == request.auth.uid;
+      allow update: if isStaff() || (
+        isAuthenticated() 
+        && request.auth.uid == resource.data.userId
+        && (request.resource.data.get('status', 'pending') == resource.data.get('status', 'pending'))
+        && (request.resource.data.get('paytmTxnId', '') == resource.data.get('paytmTxnId', ''))
+        && (request.resource.data.get('verifiedByServer', false) == resource.data.get('verifiedByServer', false))
+      );
+    }
+    
+    match /access_logs/{docId} {
+      allow read: if isStaff();
+      allow create: if isStaff(); 
+      allow update, delete: if false; 
+    }
+
+    match /messages/{channel}/chats/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if isStaff();
+    }
+  }
+}
