@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { db, Event, EventRegistration } from '@/lib/db';
-import { doc, getDoc, collection, getDocs, orderBy, query, limit } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, orderBy, query, limit, onSnapshot, QuerySnapshot, DocumentData } from 'firebase/firestore';
 import { Loader2, Download, RefreshCw, FileText, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -41,39 +41,80 @@ export default function AdminRegistrationsPage() {
         fetchEvents();
     }, []);
 
-    // 2. Fetch Registrations when Event Changes
+    // Cache for User Profiles to avoid re-fetching
+    const [userProfilesCache, setUserProfilesCache] = useState<Record<string, any>>({});
+
+    // 2. Real-time Registrations Listener (Optimized)
     useEffect(() => {
         if (!selectedEventId) return;
-        fetchRegistrations(selectedEventId);
-    }, [selectedEventId]);
 
-    const fetchRegistrations = async (eventId: string) => {
         setLoading(true);
-        try {
-            // Get Event Details first (to know columns)
-            const eventData = await EventService.getEventById(eventId);
-            if (!eventData) {
-                toast.error("Event data not found");
-                return;
-            }
+
+        // precise-fetch event details
+        EventService.getEventById(selectedEventId).then(ev => {
             // @ts-ignore
-            setCurrentEvent(eventData);
+            if (ev) setCurrentEvent(ev);
+        });
 
-            // Get Registrations
-            const regsRef = collection(db, 'events', eventId, 'registrations');
-            const q = query(regsRef, orderBy('createdAt', 'desc'));
-            const regsSnap = await getDocs(q);
+        const regsRef = collection(db, 'events', selectedEventId, 'registrations');
+        const q = query(regsRef, orderBy('createdAt', 'desc'));
 
-            const regs = regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as EventRegistration));
-            setRegistrations(regs);
+        const unsubscribe = onSnapshot(q, async (snapshot: QuerySnapshot<DocumentData>) => {
+            const rawRegs = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() } as any))
+                .filter(r => r.paymentStatus === 'success' || r.paymentStatus === 'paid' || r.status === 'approved');
 
-        } catch (error) {
-            console.error(error);
-            toast.error("Failed to fetch registrations");
-        } finally {
+            // 1. Identify missing user profiles
+            const idsToFetch = new Set<string>();
+            rawRegs.forEach(r => {
+                if (!r.userSnapshot && !userProfilesCache[r.userId]) {
+                    idsToFetch.add(r.userId);
+                }
+            });
+
+            // 2. Fetch missing profiles in batches
+            const newProfiles = { ...userProfilesCache };
+            const idsArray = Array.from(idsToFetch);
+
+            if (idsArray.length > 0) {
+                const chunkArray = (arr: string[], size: number) => {
+                    const chunks = [];
+                    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+                    return chunks;
+                };
+
+                const chunks = chunkArray(idsArray, 10);
+                const { documentId, where, query: queryAlias, collection: colAlias, getDocs: getDocsAlias } = await import('firebase/firestore');
+
+                await Promise.all(chunks.map(async (chunk) => {
+                    const usersQ = queryAlias(colAlias(db, 'users'), where(documentId(), 'in', chunk));
+                    const snaps = await getDocsAlias(usersQ);
+                    snaps.forEach(d => { newProfiles[d.id] = d.data(); });
+                }));
+
+                setUserProfilesCache(newProfiles);
+            }
+
+            // 3. Merge
+            const enrichedRegs = rawRegs.map(r => {
+                // Use snapshot if exists, else cache, else fallback
+                const profile = r.userSnapshot || newProfiles[r.userId];
+                return profile ? { ...r, userSnapshot: profile } : r;
+            });
+
+            setRegistrations(enrichedRegs);
             setLoading(false);
-        }
-    };
+        }, (error) => {
+            console.error("Real-time listener error:", error);
+            toast.error("Live updates failed");
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [selectedEventId]); // Dependency on ID changes listener
+
+    // Removed manual fetchRegistrations as it is now live.
+
 
     // 3. Export Logic (Advanced)
     const downloadCSV = () => {
@@ -122,12 +163,12 @@ export default function AdminRegistrationsPage() {
             const rowData = [
                 reg.id,
                 reg.role || 'Individual',
-                u.fullName,
-                u.email, // Now guaranteed
-                u.mobileNumber,
-                u.collegeName,
-                u.yearOfStudy || '',
-                u.degreeBranch || '',
+                u?.fullName || 'Unknown',
+                u?.email || 'N/A', // Now guaranteed
+                u?.mobileNumber || 'N/A',
+                u?.collegeName || 'N/A',
+                u?.yearOfStudy || '',
+                u?.degreeBranch || '',
                 reg.paymentStatus,
                 reg.paymentId || '',
             ];
@@ -211,7 +252,7 @@ export default function AdminRegistrationsPage() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <Button variant="outline" onClick={() => fetchRegistrations(selectedEventId)} disabled={loading}>
+                    <Button variant="outline" onClick={() => toast.info("Live updates are active")} disabled={loading}>
                         <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
                     </Button>
                     <Button onClick={downloadCSV} disabled={registrations.length === 0} className="bg-green-600 hover:bg-green-700 text-white">
@@ -258,7 +299,7 @@ export default function AdminRegistrationsPage() {
                                         {/* Name & ID */}
                                         <td className="px-6 py-4">
                                             <div className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                                                {reg.userSnapshot.fullName}
+                                                {reg.userSnapshot?.fullName || 'Unknown'}
                                             </div>
                                             <div className="text-xs text-slate-400 flex items-center gap-2">
                                                 <span title="User ID" className="font-mono bg-slate-100 px-1 rounded">{reg.userId.slice(0, 6)}..</span>
@@ -267,19 +308,19 @@ export default function AdminRegistrationsPage() {
 
                                         {/* College */}
                                         <td className="px-6 py-4 max-w-[200px]">
-                                            <div className="truncate text-slate-700" title={reg.userSnapshot.collegeName}>
-                                                {reg.userSnapshot.collegeName}
+                                            <div className="truncate text-slate-700" title={reg.userSnapshot?.collegeName || ''}>
+                                                {reg.userSnapshot?.collegeName || 'N/A'}
                                             </div>
                                             <div className="text-xs text-slate-400 mt-0.5">
-                                                {reg.userSnapshot.degreeBranch || 'Branch N/A'}
+                                                {reg.userSnapshot?.degreeBranch || 'Branch N/A'}
                                             </div>
                                         </td>
 
                                         {/* Contact */}
                                         <td className="px-6 py-4">
-                                            <div className="text-slate-700 font-mono text-xs">{reg.userSnapshot.mobileNumber}</div>
-                                            <div className="text-slate-400 text-xs truncate max-w-[150px]" title={reg.userSnapshot.email}>
-                                                {reg.userSnapshot.email}
+                                            <div className="text-slate-700 font-mono text-xs">{reg.userSnapshot?.mobileNumber || 'N/A'}</div>
+                                            <div className="text-slate-400 text-xs truncate max-w-[150px]" title={reg.userSnapshot?.email || ''}>
+                                                {reg.userSnapshot?.email || 'N/A'}
                                             </div>
                                         </td>
 

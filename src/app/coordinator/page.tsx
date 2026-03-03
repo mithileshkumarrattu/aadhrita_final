@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { EventService } from '@/services/EventService';
-import { Event } from '@/lib/db';
-import { Loader2, Calendar, Users, ArrowRight } from 'lucide-react';
+import { db, COLLECTIONS, Event } from '@/lib/db';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function CoordinatorDashboard() {
@@ -19,19 +19,16 @@ export default function CoordinatorDashboard() {
             if (!user?.email) return;
 
             try {
-                // Fetch all events and filter client-side
-                // In a production app with thousands of events, we'd use a specific query
-                const allEvents = await EventService.getAllEvents();
-
-                // Filter: User is either explicitly in 'coordinators' OR is an 'admin' (optional, but good for testing)
-                const myEvents = allEvents.filter(ev =>
-                    ev.coordinators?.includes(user.email!) ||
-                    // Optional: Admins see all
-                    // user.role === 'admin' 
-                    false
+                // Optimized Query: Fetch only events where the user is a coordinator
+                const q = query(
+                    collection(db, COLLECTIONS.EVENTS),
+                    where('coordinators', 'array-contains', user.email)
                 );
 
-                setEvents(myEvents as Event[]);
+                const snapshot = await getDocs(q);
+                const myEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
+
+                setEvents(myEvents);
             } catch (error) {
                 console.error("Failed to fetch events", error);
             } finally {
@@ -71,7 +68,7 @@ export default function CoordinatorDashboard() {
                                     <img src={event.imagePosterUrl} alt={event.title} className="w-full h-full object-cover" />
                                 </div>
                             ) : (
-                                <div className="h-3 blue-500 bg-gradient-to-r from-blue-500 to-indigo-600" />
+                                <div className="h-32 bg-gradient-to-r from-blue-500 to-indigo-600" />
                             )}
 
                             <div className="p-6 flex-1 flex flex-col">
@@ -84,15 +81,12 @@ export default function CoordinatorDashboard() {
 
                                 <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between">
                                     <Button
-                                        onClick={() => router.push(`/coordinator/events/${event.id}`)}
+                                        onClick={() => router.push(`/faculty`)} // Redirect to specific Faculty View or retain generic
                                         variant="ghost"
                                         className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 -ml-2 font-semibold"
                                     >
-                                        View Registrations <ArrowRight className="w-4 h-4 ml-1" />
+                                        Manage Event <ArrowRight className="w-4 h-4 ml-1" />
                                     </Button>
-
-                                    {/* Valid for now, would fetch real count in detailed view */}
-                                    {/* <span className="text-xs text-slate-400 font-mono">ID: {event.id}</span> */}
                                 </div>
                             </div>
                         </div>

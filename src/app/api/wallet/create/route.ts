@@ -1,22 +1,23 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { COLLECTIONS } from '@/lib/db';
+import { adminDb } from '@/lib/firebase-admin';
 import { createRandomWallet, fundWallet, getAdminWallet, getTokenContract } from '@/lib/wallet-utils';
-import { doc, getDoc, writeBatch } from 'firebase/firestore';
 import { parseEther } from 'ethers';
 
 export async function POST(request: Request) {
     try {
-        const { userId, email } = await request.json();
+        const { userId, email, collectionName = 'users' } = await request.json();
 
         if (!userId) {
             return NextResponse.json({ error: 'UserId is required' }, { status: 400 });
         }
 
-        // Check if wallet already exists for user
-        const userRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userRef);
+        const targetCollection = collectionName === 'staff' ? COLLECTIONS.STAFF : collectionName;
 
-        if (userDoc.exists() && userDoc.data()?.walletAddress) {
+        const userRef = adminDb.collection(targetCollection).doc(userId);
+        const userDoc = await userRef.get();
+
+        if (userDoc.exists && userDoc.data()?.walletAddress) {
             return NextResponse.json({
                 success: true,
                 address: userDoc.data()?.walletAddress,
@@ -27,11 +28,11 @@ export async function POST(request: Request) {
         // Create new wallet
         const wallet = createRandomWallet();
 
-        // Save wallet info
-        const batch = writeBatch(db);
+        // Save wallet info using Admin Batch
+        const batch = adminDb.batch();
 
         // 1. Secure storage of Private Key
-        const walletRef = doc(db, 'wallets', userId);
+        const walletRef = adminDb.collection('wallets').doc(userId);
         batch.set(walletRef, {
             userId: userId,
             address: wallet.address,
@@ -50,8 +51,8 @@ export async function POST(request: Request) {
 
         // 3. Auto-Fund Gas & Welcome Bonus (Genesis Allocation)
         // Check System Settings first
-        const configSnap = await getDoc(doc(db, 'system', 'config'));
-        const airdropEnabled = configSnap.exists() ? (configSnap.data().airdropEnabled ?? true) : true;
+        const configSnap = await adminDb.collection('system').doc('config').get();
+        const airdropEnabled = configSnap.exists ? (configSnap.data()?.airdropEnabled ?? true) : true;
 
         if (airdropEnabled) {
             try {

@@ -1,55 +1,59 @@
 'use client';
 
 import React from 'react';
-import { Cinzel } from 'next/font/google';
 import { cn } from '@/lib/utils';
-import { Coins } from 'lucide-react';
 import Image from 'next/image';
+import { Sparkles, ArrowRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Cinzel } from 'next/font/google';
 
 const cinzel = Cinzel({ subsets: ['latin'] });
 
 export default function AFTSection() {
+    const router = useRouter();
     return (
-        <div className="w-full relative mb-16 rounded-[3rem] overflow-hidden border border-white/10 group">
-            {/* Background */}
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1a0524] via-[#2D0A31] to-black opacity-90" />
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-20" />
+        <div className="w-full relative mb-16 rounded-[2rem] overflow-hidden group shadow-2xl border border-white/[0.05] bg-[#0a0604]">
+            {/* Dark Metallic/Copper Gradient Background similar to reference */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_60%_40%,_#5c3d26_0%,_#0a0604_65%)] opacity-90 transition-opacity duration-1000 group-hover:opacity-100" />
 
-            <div className="relative z-10 grid md:grid-cols-2 gap-8 items-center p-8 md:p-16">
+            {/* Subtle Abstract Concentric Rings */}
+            <div className="absolute top-1/2 left-3/4 -translate-y-1/2 -translate-x-1/2 w-[900px] h-[900px] border border-white/[0.03] rounded-full pointer-events-none" />
+            <div className="absolute top-1/2 left-3/4 -translate-y-1/2 -translate-x-1/2 w-[700px] h-[700px] border border-white/[0.04] rounded-full pointer-events-none" />
+            <div className="absolute top-1/2 left-3/4 -translate-y-1/2 -translate-x-1/2 w-[500px] h-[500px] border border-white/[0.05] rounded-full pointer-events-none" />
+
+            {/* Stardust texture */}
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-[0.15] mix-blend-screen pointer-events-none" />
+
+            <div className="relative z-10 grid md:grid-cols-2 gap-12 items-center p-8 md:p-14 lg:p-20">
                 <div className="flex flex-col gap-6 text-left">
-                    <span className="px-4 py-2 rounded-full bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/20 w-fit text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                        <Coins className="w-4 h-4" /> Powering Technology
-                    </span>
-                    <h2 className={cn("text-5xl md:text-7xl font-black uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] via-[#f7e8b5] to-[#B8860B]", cinzel.className)}>
-                        Earn AFT<br />Get Rewards
-                    </h2>
-                    <p className="text-neutral-300 text-lg leading-relaxed max-w-lg">
-                        Aadhrita Fest Tokens (AFT) are your gateway to exclusives. Participate in events to earn coins and spend them on exclusive Merchandise gifts!
+
+                    {/* Headline */}
+                    <div>
+                        <h2 className="text-[2.5rem] md:text-[3.5rem] lg:text-[4.5rem] font-sans font-black text-white leading-[1.1] tracking-tight">
+                            Earn AFT &<br />Get Rewards!
+                        </h2>
+                    </div>
+
+                    {/* Realistic Description */}
+                    <p className="text-neutral-300 text-sm md:text-base leading-relaxed max-w-sm font-mono tracking-wide opacity-90 mt-2">
+                        Earn AFT by participating in and winning events, or grab them at on-spot challenges. Accumulate your wealth to claim premium merchandise and hidden rewards.
                     </p>
 
-                    <div className="flex flex-col gap-4 mt-4">
-                        <div className="flex items-center gap-4 text-sm font-bold text-white/80">
-                            <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center border border-white/10">🏆</div>
-                            <span>Win Events &rarr; Earn AFT</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm font-bold text-white/80">
-                            <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center border border-white/10">🎁</div>
-                            <span>Spend AFT &rarr; Get Swag</span>
-                        </div>
-                    </div>
                 </div>
 
-                {/* Coin Visuals */}
-                <div className="relative h-[300px] md:h-[500px] w-full flex items-center justify-center">
-                    {/* Glow Behind */}
-                    <div className="absolute inset-0 bg-[#D4AF37] blur-[100px] opacity-20 rounded-full" />
+                {/* Single Coin Visuals (Reference NFT style) */}
+                <div className="relative h-[300px] md:h-[450px] w-full flex items-center justify-center group/image mt-8 md:mt-0">
+
+                    {/* Core Glow behind the subject */}
+                    <div className="absolute inset-0 bg-[#dca362] blur-[120px] opacity-20 rounded-full group-hover/image:opacity-30 transition-opacity duration-1000" />
+
                     <Image
-                        src="/pile of aft.png" // User asset
-                        alt="Pile of AFT Coins"
-                        width={600}
-                        height={600}
-                        className="object-contain drop-shadow-2xl animate-in zoom-in duration-1000"
+                        src="/AFT.png"
+                        alt="Aadhrita Fest Token"
+                        fill
+                        className="object-contain drop-shadow-[0_30px_60px_rgba(0,0,0,0.8)] animate-in zoom-in duration-1000 md:group-hover/image:scale-[1.03] transition-transform duration-700 ease-out"
                     />
+
                 </div>
             </div>
         </div>

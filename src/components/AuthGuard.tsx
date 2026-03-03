@@ -3,134 +3,144 @@
 import * as React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
-import { RoyalGateLoader } from './landing/RoyalGateLoader';
-import { FullScreenCoinLoader } from '@/components/ui/CoinLoader';
+
+// ── Module-level cache ────────────────────────────────────────────────────────
+// Keyed by user UID. Stores the result of the Firestore "hasEntryPass" check so
+// we NEVER re-hit Firestore on subsequent route navigations for the same user.
+// Cleared automatically on sign-out (uid changes to null → new uid gets fresh entry).
+const onboardingCache = new Map<string, boolean>();
+
+// ── Public paths (no auth required) ──────────────────────────────────────────
+const PUBLIC_PATHS = [
+    '/', '/login', '/signup', '/enrollment/hackathon', '/about', '/events',
+    '/team', '/schedule', '/entrypass', '/support', '/help', '/pass',
+    '/register/hackathon', '/conduct', '/privacy', '/payment-success', '/payment-failed',
+    '/scoreboard'
+];
+
+function isPublicPath(pathname: string): boolean {
+    return PUBLIC_PATHS.some(
+        p => pathname === p || (p !== '/' && pathname.startsWith(p + '/'))
+    );
+}
+
+// ── Lightweight fullscreen loader ─────────────────────────────────────────────
+// Replaces FullScreenCoinLoader — single CSS spinner, no image, no 3D transforms.
+// Much lighter on the GPU; indistinguishable to users at normal loading durations.
+function QuickLoader() {
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 100,
+            background: '#050505', display: 'flex',
+            flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: '16px',
+        }}>
+            <div style={{
+                width: 40, height: 40,
+                border: '3px solid rgba(212,175,55,0.2)',
+                borderTop: '3px solid #D4AF37',
+                borderRadius: '50%',
+                animation: 'spin 0.7s linear infinite',
+            }} />
+            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        </div>
+    );
+}
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
     const { user, loading, userProfile } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
-    const [checkingReg, setCheckingReg] = React.useState(true);
 
-    // List of public paths that don't require auth
-    // Note: /register paths are "protected" but handled by the Student Logic below
-    // Note: /register paths are "protected" but handled by the Student Logic below
-    const publicPaths = ['/', '/login', '/signup', '/enrollment/hackathon', '/about', '/events', '/team', '/schedule', '/entrypass'];
+    // `checking` starts true; set to false once the route check resolves.
+    // Starts as false for public paths — they never need the Firestore guard.
+    const isPublic = isPublicPath(pathname || '/');
+    const [checking, setChecking] = React.useState(!isPublic);
 
     React.useEffect(() => {
-        const checkStatus = async () => {
-            if (loading) return;
+        if (loading) return; // Wait for Firebase auth to initialise
 
-            const currentPath = pathname || '/';
+        const currentPath = pathname || '/';
+        const pub = isPublicPath(currentPath);
 
-            // Explicitly allow team page
-            if (currentPath === '/team' || currentPath.startsWith('/team/')) {
-                setCheckingReg(false);
-                return;
-            }
+        // ── Unauthenticated ───────────────────────────────────────────────────
+        if (!user) {
+            if (!pub) router.replace('/');
+            setChecking(false);
+            return;
+        }
 
-            const isPublic = publicPaths.some(p => currentPath === p || (p !== '/' && currentPath.startsWith(p + '/')));
+        // ── Admin: always pass immediately ───────────────────────────────────
+        if (userProfile?.role === 'admin') {
+            setChecking(false);
+            return;
+        }
 
-            if (!user) {
-                // If not logged in and not on a public page, go to Landing
-                if (!isPublic) {
-                    // Avoid infinite redirect if already on /
-                    router.replace('/');
+        // ── Public paths: no check needed ────────────────────────────────────
+        if (pub || currentPath === '/team' || currentPath.startsWith('/team/')) {
+            setChecking(false);
+            return;
+        }
+
+        // ── Enrollment routes: allow freely ──────────────────────────────────
+        if (currentPath.startsWith('/enrollment')) {
+            setChecking(false);
+            return;
+        }
+
+        // ── Register routes: check onboarding status (cached per UID) ────────
+        if (currentPath.startsWith('/register')) {
+            const cachedResult = onboardingCache.get(user.uid);
+
+            if (cachedResult !== undefined) {
+                // Cache hit — instant decision, no Firestore call
+                if (!cachedResult && currentPath !== '/register/hackathon' && !currentPath.includes('/register/onboarding')) {
+                    router.replace('/register/onboarding');
                 }
-                setCheckingReg(false);
+                setChecking(false);
                 return;
             }
 
-            // --- AUTHENTICATED USER ---
-
-            // 0. ADMIN BYPASS (Fast Pass)
-            if (userProfile?.role === 'admin') {
-                setCheckingReg(false);
-                return;
-            }
-
-            // 1. STUDENT LOGIC (Strict Pre-Fest Mode)
-
-            // If on specific "Banned" routes (dashboard, wallet, etc) -> Redirect
-            // Actually, we whitelist /register/* and ban everything else for Students
-
-            const isRegisterRoute = currentPath.startsWith('/register');
-            const isEnrollmentRoute = currentPath.startsWith('/enrollment');
-
-            // Allow direct access to enrollment pages without forcing general onboarding
-            if (isEnrollmentRoute) {
-                setCheckingReg(false);
-                return;
-            }
-
-            if (isRegisterRoute) {
-                // Determine if they are in the RIGHT registration stage
+            // Cache miss — one-time Firestore fetch, then cache it
+            (async () => {
                 try {
                     const { doc, getDoc } = await import('firebase/firestore');
                     const { db, COLLECTIONS } = await import('@/lib/db');
+                    const snap = await getDoc(doc(db, COLLECTIONS.USERS, user.uid));
+                    const isOnboarded = snap.exists() && snap.data()?.hasEntryPass === true;
 
-                    // We check the specific 'registrations' doc
-                    const regRef = doc(db, COLLECTIONS.REGISTRATIONS, user.uid);
-                    const regSnap = await getDoc(regRef);
-                    const isComplete = regSnap.exists() && regSnap.data()?.completed;
+                    // Store in cache for every future navigation
+                    onboardingCache.set(user.uid, isOnboarded);
 
-                    if (!isComplete) {
-                        // Must be in Onboarding
-                        if (!currentPath.includes('/register/onboarding')) {
-                            router.replace('/register/onboarding'); // Force them there
-                        }
-                    } else {
-                        // Registration Complete
-                        // Should NOT be in Onboarding (confusing)
-                        if (currentPath.includes('/register/onboarding')) {
-                            router.replace('/dashboard');
-                        }
-                        // Otherwise they are in /register/success or /register/hackathon etc. -> Allow
+                    if (!isOnboarded && currentPath !== '/register/hackathon' && !currentPath.includes('/register/onboarding')) {
+                        router.replace('/register/onboarding');
                     }
                 } catch (e) {
-                    console.error("Registration check failed", e);
+                    console.error('[AuthGuard] onboarding check failed', e);
+                } finally {
+                    setChecking(false);
                 }
-                setCheckingReg(false);
-                return;
-            }
-
-            // If Student is attempting to access /dashboard or root / while logged in
-            // Redirect them to the Registration Flow
-            // console.log("Student accessing non-register route -> Redirecting to flow");
-
-            // DISABLE FORCED ONBOARDING AS PER USER REQUEST
-            setCheckingReg(false);
+            })();
             return;
+        }
 
-            /*
-            // Check status to know where to send (Onboarding vs Success)
-            try {
-                const { doc, getDoc } = await import('firebase/firestore');
-                const { db, COLLECTIONS } = await import('@/lib/db');
-
-                const regRef = doc(db, COLLECTIONS.REGISTRATIONS, user.uid);
-                const regSnap = await getDoc(regRef);
-                const isComplete = regSnap.exists() && regSnap.data()?.completed;
-
-                if (isComplete) {
-                    router.replace('/enrollment/hackathon/success');
-                } else {
-                    router.replace('/register/onboarding');
-                }
-            } catch (e) {
-                // Fallback
-                router.replace('/register/onboarding');
-            }
-            */
-            // checkingReg stays true until redirect happens or we decide to show loading
-        };
-
-        checkStatus();
+        // ── All other authenticated routes: allow ─────────────────────────────
+        setChecking(false);
     }, [user, userProfile, loading, pathname]);
 
-    if (loading || (user && userProfile?.role !== 'admin' && checkingReg)) {
-        return <FullScreenCoinLoader />;
+    // Show the lightweight loader only while genuinely checking a protected route
+    if (loading || (user && checking)) {
+        return <QuickLoader />;
     }
 
     return <>{children}</>;
+}
+
+// Allow external code to invalidate the cache on sign-out or after onboarding
+export function clearOnboardingCache(uid?: string) {
+    if (uid) {
+        onboardingCache.delete(uid);
+    } else {
+        onboardingCache.clear();
+    }
 }

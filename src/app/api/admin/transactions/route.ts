@@ -1,16 +1,13 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebase-admin';
 
 export async function GET() {
     try {
-        const q = query(
-            collection(db, 'transactions'),
-            orderBy('timestamp', 'desc'),
-            limit(100) // Limit to last 100 for now to avoid overload
-        );
+        const snapshot = await adminDb.collection('transactions')
+            .orderBy('timestamp', 'desc')
+            .limit(100)
+            .get();
 
-        const snapshot = await getDocs(q);
         const transactions = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()

@@ -1,0 +1,169 @@
+{
+  "c2dW63kIfxOxYXiIjP4gHXefFVw2": {
+    "uid": "c2dW63kIfxOxYXiIjP4gHXefFVw2",
+    "email": "lakshmisrisanthikomperla@gmail.com",
+    "role": "student",
+    "registrationNumber": "GOOGLE_USER",
+    "semester": 1,
+    "section": "A",
+    "department": "General",
+    "walletAddress": "0xee7B8f19502b6B89269f57C2f18Ba264cA87779b",
+    "walletCreatedAt": {
+      "_seconds": 1772262846,
+      "_nanoseconds": 904000000
+    },
+    "regNo": "24331A0133",
+    "cityState": "Vizianagaram, Andhra Pradesh",
+    "paidEventIds": [
+      "cadathon",
+      "bridge-craft-challenge"
+    ],
+    "gender": "Female",
+    "mobileNumber": "9959723162",
+    "collegeType": "MVGR",
+    "fullName": "Komperla Lakshmi Sri santhi",
+    "degreeBranch": "Civil",
+    "numberOfDays": 0,
+    "accommodationDates": [],
+    "userId": "c2dW63kIfxOxYXiIjP4gHXefFVw2",
+    "arrivalDate": "",
+    "accommodationRequired": false,
+    "aftCoins": 0,
+    "collegeName": "MVGR College of Engineering",
+    "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocIJ6yCj186MN-Jm2lSr0KElO53bpUmk0gJ7-gwCwwnGMd2p=s96-c",
+    "registrationType": "Individual",
+    "hasHackathonPass": false,
+    "departureDate": "",
+    "yearOfStudy": "2",
+    "createdAt": {
+      "_seconds": 1772269137,
+      "_nanoseconds": 555000000
+    },
+    "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772269136/entrypass/24331A0133_1772269141486_ID.jpg",
+    "hasEntryPass": true,
+    "completed": true,
+    "registeredEventIds": [
+      "cadathon",
+      "bridge-craft-challenge"
+    ],
+    "paymentDetails": {
+      "amount": 400,
+      "orderId": "ORD_1772269147210_IVOGQ",
+      "currency": "INR",
+      "source": "webhook",
+      "paymentDate": "2026-02-28T08:59:28.977Z",
+      "txnId": "20260228210430000234511761932687091"
+    },
+    "isOnboarded": true
+  },
+  "Fg4XiCZzkcPpl5UVf81vobsq2qf1": {
+    "uid": "Fg4XiCZzkcPpl5UVf81vobsq2qf1",
+    "email": "shirinsk2406@gmail.com",
+    "role": "student",
+    "registrationNumber": "GOOGLE_USER",
+    "semester": 1,
+    "section": "A",
+    "department": "General",
+    "walletAddress": "0xE7246d0cfb3690a822CEeC896a690c9407E6F65F",
+    "walletCreatedAt": {
+      "_seconds": 1772262846,
+      "_nanoseconds": 220000000
+    },
+    "regNo": "24331A0147",
+    "cityState": "Vizianagaram, Andhra Pradesh",
+    "paidEventIds": [
+      "bridge-craft-challenge"
+    ],
+    "gender": "Female",
+    "mobileNumber": "9490345318",
+    "collegeType": "MVGR",
+    "fullName": "Rabiashirin Shaik",
+    "degreeBranch": "Civil",
+    "numberOfDays": 0,
+    "accommodationDates": [],
+    "userId": "Fg4XiCZzkcPpl5UVf81vobsq2qf1",
+    "arrivalDate": "",
+    "accommodationRequired": false,
+    "aftCoins": 0,
+    "collegeName": "MVGR College of Engineering",
+    "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocKjfZlu-7IKQ6UoyrzAIYu1k736UcOpXfuAGBABNDnOll_1dg=s96-c",
+    "registrationType": "Individual",
+    "hasHackathonPass": false,
+    "departureDate": "",
+    "yearOfStudy": "2",
+    "createdAt": {
+      "_seconds": 1772269760,
+      "_nanoseconds": 996000000
+    },
+    "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772269759/entrypass/24331A0147_1772269766997_ID.jpg",
+    "hasEntryPass": true,
+    "completed": true,
+    "registeredEventIds": [
+      "bridge-craft-challenge"
+    ],
+    "paymentDetails": {
+      "amount": 300,
+      "orderId": "ORD_1772269769914_ZTOUP",
+      "currency": "INR",
+      "source": "webhook",
+      "paymentDate": "2026-02-28T09:09:48.191Z",
+      "txnId": "20260228210530000234514375013384346"
+    },
+    "isOnboarded": true
+  },
+  "qA3dJt20goc5Cfct43aZiAnne3R2": {
+    "uid": "qA3dJt20goc5Cfct43aZiAnne3R2",
+    "email": "pillasusmitha11@gmail.com",
+    "role": "student",
+    "fullName": "susmitha pilla",
+    "registrationNumber": "GOOGLE_USER",
+    "semester": 1,
+    "section": "A",
+    "department": "General",
+    "walletAddress": "0xa8da89875ab7d3097A96F0b91E18ea3897284edC",
+    "walletCreatedAt": {
+      "_seconds": 1772269942,
+      "_nanoseconds": 457000000
+    },
+    "regNo": "24331A0143",
+    "cityState": "Vizianagaram, Andhra Pradesh",
+    "paidEventIds": [
+      "bridge-craft-challenge"
+    ],
+    "gender": "Female",
+    "mobileNumber": "6305761168",
+    "collegeType": "MVGR",
+    "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772270132/entrypass/24331A0143_1772270137683_ID.jpg",
+    "degreeBranch": "CIVIL",
+    "numberOfDays": 0,
+    "accommodationDates": [],
+    "userId": "qA3dJt20goc5Cfct43aZiAnne3R2",
+    "arrivalDate": "",
+    "accommodationRequired": false,
+    "aftCoins": 0,
+    "collegeName": "MVGR College of Engineering",
+    "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocJnt57VUdperRw9bzRu31rpeGfftEf7nTW6KU6en1oWjP2cyQ=s96-c",
+    "createdAt": {
+      "_seconds": 1772270133,
+      "_nanoseconds": 955000000
+    },
+    "registrationType": "Individual",
+    "hasHackathonPass": false,
+    "departureDate": "",
+    "yearOfStudy": "2",
+    "hasEntryPass": true,
+    "completed": true,
+    "registeredEventIds": [
+      "bridge-craft-challenge"
+    ],
+    "paymentDetails": {
+      "amount": 300,
+      "orderId": "ORD_1772270143287_9TNY1",
+      "currency": "INR",
+      "source": "webhook",
+      "paymentDate": "2026-02-28T09:15:56.914Z",
+      "txnId": "20260228210390000234515940096936954"
+    },
+    "isOnboarded": true
+  }
+}

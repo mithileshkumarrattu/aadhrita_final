@@ -4,8 +4,8 @@ import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     Table,
     TableBody,
@@ -13,18 +13,33 @@ import {
     TableHead,
     TableHeader,
     TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Loader2, Coins, Fuel, RefreshCw, Plus, Users, Wallet, Trash2, Shield, ShieldOff, CheckSquare, Square, Copy, Settings2 } from 'lucide-react';
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import {
+    Loader2,
+    RefreshCw,
+    Wallet,
+    Shield,
+    Fuel,
+    Coins,
+    Copy,
+    ArrowLeft,
+    Trash2,
+    Settings2,
+    Plus,
+    Send
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import * as XLSX from 'xlsx';
 
-export default function WalletManagerPage() {
+export default function AdminWalletsPage() {
     const router = useRouter();
     const { userProfile } = useAuth();
     const [users, setUsers] = React.useState<any[]>([]);
+    const [staff, setStaff] = React.useState<any[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [searchTerm, setSearchTerm] = React.useState('');
     const [stats, setStats] = React.useState({ totalWallets: 0, balance: '0', gas: '0' });
@@ -44,16 +59,27 @@ export default function WalletManagerPage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [usersRes, txRes] = await Promise.all([
-                fetch('/api/admin/wallets'),
+            const [usersRes, staffRes, txRes] = await Promise.all([
+                fetch('/api/admin/wallets?type=users'),
+                fetch('/api/admin/wallets?type=staff'),
                 fetch('/api/admin/transactions')
             ]);
 
             const usersData = await usersRes.json();
             if (usersData.success) {
                 setUsers(usersData.users);
-                const wallets = usersData.users.filter((u: any) => u.walletAddress).length;
-                setStats(prev => ({ ...prev, totalWallets: wallets }));
+            }
+
+            const staffData = await staffRes.json();
+            if (staffData.success) {
+                setStaff(staffData.users);
+            }
+
+            if (usersData.success && staffData.success) {
+                const totalWallets =
+                    usersData.users.filter((u: any) => u.walletAddress).length +
+                    staffData.users.filter((u: any) => u.walletAddress).length;
+                setStats(prev => ({ ...prev, totalWallets }));
             }
 
             if (txRes.ok) {
@@ -63,7 +89,6 @@ export default function WalletManagerPage() {
                 }
             }
 
-            // Fetch Admin System Stats
             fetchAdminStats();
         } catch (error) {
             console.error(error);
@@ -77,22 +102,23 @@ export default function WalletManagerPage() {
         fetchData();
     }, []);
 
-    // Load Balances Helper
     const loadBalances = async () => {
-        if (users.length === 0) return;
+        const allEntities = [...users, ...staff];
+        if (allEntities.length === 0) return;
         setLoadingBalances(true);
         toast.info("Fetching live balances...");
 
         const newBalances: Record<string, string> = {};
 
-        // Process in chunks of 5 to avoid rate limits
+        // Process in chunks of 5
         const chunk = 5;
-        for (let i = 0; i < users.length; i += chunk) {
-            const batch = users.slice(i, i + chunk);
+        for (let i = 0; i < allEntities.length; i += chunk) {
+            const batch = allEntities.slice(i, i + chunk);
             await Promise.all(batch.map(async (u) => {
                 if (u.walletAddress) {
                     try {
-                        const res = await fetch(`/api/wallet/balance?userId=${u.id}`);
+                        const collection = u.registrationNumber === 'STAFF' ? 'staff_credentials' : 'users';
+                        const res = await fetch(`/api/wallet/balance?userId=${u.id}&collectionName=${collection}`);
                         const data = await res.json();
                         if (data.exists) {
                             newBalances[u.id] = parseFloat(data.balance).toFixed(2);
@@ -108,11 +134,11 @@ export default function WalletManagerPage() {
         toast.success("Balances updated");
     };
 
-    const createWallet = async (userId: string, email: string) => {
+    const createWallet = async (userId: string, email: string, collectionName: string = 'users') => {
         try {
             const res = await fetch('/api/wallet/create', {
                 method: 'POST',
-                body: JSON.stringify({ userId, email }),
+                body: JSON.stringify({ userId, email, collectionName }),
             });
             if (res.ok) {
                 toast.success(`Wallet created for ${email}`);
@@ -192,7 +218,8 @@ export default function WalletManagerPage() {
     const handleBulkAirdrop = async () => {
         if (selectedUsers.size === 0) return;
 
-        const targets = users.filter(u => selectedUsers.has(u.id) && u.walletAddress);
+        const all = [...users, ...staff];
+        const targets = all.filter(u => selectedUsers.has(u.id) && u.walletAddress);
 
         if (targets.length === 0) {
             toast.error("No selected users have active wallets.");
@@ -208,19 +235,14 @@ export default function WalletManagerPage() {
         for (let i = 0; i < targets.length; i++) {
             const user = targets[i];
             setProcessStatus(`Sending to ${user.email} (${i + 1}/${targets.length})...`);
-
             try {
                 const res = await fetch('/api/admin/distribute', {
                     method: 'POST',
                     body: JSON.stringify({ userId: user.id, amount: Number(bulkAmount) }),
                 });
-
                 if (res.ok) success++;
                 else fail++;
-            } catch (e) {
-                fail++;
-            }
-            // Artificial delay to be gentle on nonce/RPC
+            } catch (e) { fail++; }
             await new Promise(r => setTimeout(r, 500));
         }
 
@@ -229,38 +251,18 @@ export default function WalletManagerPage() {
         toast.success(`Complete: ${success} Sent, ${fail} Failed`);
         setSelectedUsers(new Set());
         fetchData();
-        loadBalances(); // Refresh balances
+        loadBalances();
     };
 
-    const handleBulkProvision = async () => {
-        const targets = users.filter(u => selectedUsers.has(u.id) && !u.walletAddress);
-
-        if (targets.length === 0) {
-            toast.error("All selected users already have wallets.");
-            return;
-        }
-
-        setIsProcessing(true);
-        let count = 0;
-
-        for (let i = 0; i < targets.length; i++) {
-            const user = targets[i];
-            setProcessStatus(`Provisioning ${user.email} (${i + 1}/${targets.length})...`);
-            await createWallet(user.id, user.email);
-            count++;
-        }
-
-        setIsProcessing(false);
-        setProcessStatus('');
-        toast.success(`Provisioned ${count} wallets`);
-        fetchData();
-    };
-
-    // Filter logic
     const filteredUsers = users.filter((u: any) =>
         (u.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (u.registrationNumber || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const filteredStaff = staff.filter((u: any) =>
+        (u.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
@@ -292,7 +294,7 @@ export default function WalletManagerPage() {
                         <Wallet className="w-4 h-4 text-slate-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-4xl font-black">{stats.totalWallets} <span className="text-lg opacity-50">/ {users.length}</span></div>
+                        <div className="text-4xl font-black">{stats.totalWallets} <span className="text-lg opacity-50">/ {users.length + staff.length}</span></div>
                     </CardContent>
                 </Card>
                 <Card className="bg-white border-2 border-black shadow-neo rounded-2xl">
@@ -311,7 +313,6 @@ export default function WalletManagerPage() {
                         <Coins className="w-4 h-4 text-indigo-400" />
                     </CardHeader>
                     <CardContent>
-                        {/* Sum of known balances */}
                         <div className="text-xl font-black mb-1 text-indigo-900">
                             {Object.values(balances).reduce((acc, curr) => acc + Number(curr), 0).toFixed(0)} AFT
                         </div>
@@ -383,10 +384,11 @@ export default function WalletManagerPage() {
                             <div className="flex justify-between items-center mb-4">
                                 <TabsList className="bg-slate-100">
                                     <TabsTrigger value="users" className="font-bold">Students</TabsTrigger>
+                                    <TabsTrigger value="staff" className="font-bold">Coordinators</TabsTrigger>
                                     <TabsTrigger value="txs" className="font-bold">Transactions</TabsTrigger>
                                 </TabsList>
                                 <Input
-                                    placeholder="Search users..."
+                                    placeholder="Search..."
                                     className="max-w-xs h-9 rounded-xl border-2 border-slate-200"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -464,13 +466,88 @@ export default function WalletManagerPage() {
                                                 </TableCell>
                                                 <TableCell className="text-right flex items-center justify-end gap-2">
                                                     {!u.walletAddress && (
-                                                        <Button size="sm" onClick={() => createWallet(u.id, u.email)} className="h-7 text-xs font-bold bg-black text-white">
+                                                        <Button size="sm" onClick={() => createWallet(u.id, u.email, 'users')} className="h-7 text-xs font-bold bg-black text-white">
                                                             <Plus className="w-3 h-3 mr-1" /> Provision
                                                         </Button>
                                                     )}
                                                     {u.role !== 'admin' && (
                                                         <Button size="icon" variant="ghost" className="h-7 w-7 text-red-300 hover:text-red-600 hover:bg-red-50" onClick={() => deleteUser(u.id)}>
                                                             <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TabsContent>
+
+                            <TabsContent value="staff" className="m-0">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="hover:bg-slate-50/50 bg-slate-50 border-b-2 border-slate-100">
+                                            <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500">Coordinator Identity</TableHead>
+                                            <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500">Role</TableHead>
+                                            <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500">Wallet</TableHead>
+                                            <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500">Balance</TableHead>
+                                            <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500 text-right">Actions</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {loading ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="h-60 text-center">
+                                                    <Loader2 className="w-8 h-8 animate-spin mx-auto opacity-20 mb-2" />
+                                                    <div className="text-xs font-bold text-slate-400">Loading coordinators...</div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : filteredStaff.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="h-40 text-center font-bold opacity-40">
+                                                    No coordinators found
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : filteredStaff.map((u: any) => (
+                                            <TableRow key={u.id} className="hover:bg-slate-50 transition-colors">
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-sm text-purple-700">
+                                                            {u.fullName || 'Staff Member'}
+                                                        </span>
+                                                        <span className="text-xs text-slate-500 font-mono">{u.email}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge variant="outline" className="text-[10px] uppercase font-bold bg-white text-slate-600">
+                                                        {u.role}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {u.walletAddress ? (
+                                                        <div className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <div className="w-2 h-2 rounded-full bg-green-500" />
+                                                                <span className="text-xs font-mono text-slate-500">{u.walletAddress.slice(0, 10)}...{u.walletAddress.slice(-6)}</span>
+                                                                <Button size="icon" variant="ghost" className="h-5 w-5 text-slate-300 hover:text-slate-600" onClick={() => copyToClipboard(u.walletAddress)}>
+                                                                    <Copy className="w-3 h-3" />
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <Badge variant="secondary" className="font-bold text-[10px] bg-slate-100 text-slate-400">Not Created</Badge>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {balances[u.id] ? (
+                                                        <span className="font-bold text-sm text-yellow-700">{balances[u.id]} AFT</span>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400">-</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-right flex items-center justify-end gap-2">
+                                                    {!u.walletAddress && (
+                                                        <Button size="sm" onClick={() => createWallet(u.id, u.email, 'staff_credentials')} className="h-7 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white">
+                                                            <Plus className="w-3 h-3 mr-1" /> Create Wallet
                                                         </Button>
                                                     )}
                                                 </TableCell>
@@ -515,58 +592,37 @@ export default function WalletManagerPage() {
 
             {/* Bulk Action Sticky Bar */}
             {selectedUsers.size > 0 && (
-                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-3xl bg-black text-white p-4 rounded-2xl shadow-2xl z-50 animate-in slide-in-from-bottom-10 fade-in duration-300 flex items-center justify-between border-2 border-slate-800">
-                    <div className="flex items-center gap-4">
-                        <div className="bg-white/10 px-3 py-1 rounded-full text-sm font-bold">
-                            {selectedUsers.size} Selected
-                        </div>
-                        <div className="h-8 w-[1px] bg-white/20" />
-                        <div className="flex items-center gap-2">
-                            <Input
-                                type="number"
-                                className="w-20 h-9 bg-white/10 border-white/20 text-white font-bold text-center focus-visible:ring-0"
-                                value={bulkAmount}
-                                onChange={(e) => setBulkAmount(e.target.value)}
-                            />
-                            <span className="text-sm font-bold opacity-60">AFT</span>
-                        </div>
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-4 rounded-full shadow-2xl flex items-center gap-6 z-50 animate-in slide-in-from-bottom-10 fade-in duration-300">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-white text-black font-black w-8 h-8 rounded-full flex items-center justify-center text-sm">{selectedUsers.size}</div>
+                        <span className="font-bold text-sm">Selected</span>
+                    </div>
+                    <div className="h-8 w-px bg-zinc-800" />
+
+                    {/* Airdrop Input */}
+                    <div className="flex items-center gap-2">
+                        <Input
+                            value={bulkAmount}
+                            onChange={(e) => setBulkAmount(e.target.value)}
+                            className="w-20 h-9 bg-zinc-900 border-zinc-700 text-white font-bold text-center"
+                        />
+                        <span className="text-xs font-bold text-zinc-500">AFT</span>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="secondary"
-                            onClick={handleBulkProvision}
-                            disabled={isProcessing}
-                            className="font-bold text-xs h-9 bg-slate-800 text-white hover:bg-slate-700 hover:text-white border border-slate-700"
-                        >
-                            Provision Wallets
-                        </Button>
+                    <div className="flex gap-2">
                         <Button
                             onClick={handleBulkAirdrop}
                             disabled={isProcessing}
-                            className="font-bold h-9 bg-yellow-400 text-black hover:bg-yellow-500 border-2 border-yellow-600"
+                            className="bg-green-600 hover:bg-green-500 text-white font-bold rounded-full"
                         >
-                            {isProcessing ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                                    {processStatus ? 'Processing...' : 'Sending...'}
-                                </>
-                            ) : (
-                                <>
-                                    <Coins className="w-4 h-4 mr-2" />
-                                    Airdrop
-                                </>
-                            )}
+                            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                            {isProcessing ? processStatus || 'Processing...' : 'Airdrop'}
                         </Button>
                     </div>
-                </div>
-            )}
 
-            {/* Processing Status Toast / Overlay equivalent */}
-            {isProcessing && processStatus && (
-                <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-white border-2 border-black px-6 py-3 rounded-full shadow-neo z-50 flex items-center gap-3 animate-in fade-in slide-in-from-top-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
-                    <span className="font-bold text-sm select-none">{processStatus}</span>
+                    <button onClick={() => setSelectedUsers(new Set())} className="ml-2 text-zinc-500 hover:text-white">
+                        <Trash2 className="w-4 h-4" />
+                    </button>
                 </div>
             )}
         </div>

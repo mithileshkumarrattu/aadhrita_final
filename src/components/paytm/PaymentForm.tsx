@@ -50,11 +50,9 @@ export default function PaymentForm() {
                 }
             }
 
-            // Step 1: Generate unique Order ID
-            const orderId = `AADHRITA_${Date.now()}_${Math.random()
-                .toString(36)
-                .substr(2, 9)
-                .toUpperCase()}`;
+            // Step 1: Generate unique Order ID (Shortened for Paytm Reliability < 30 chars)
+            const uniqueSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const orderId = `PASS_${Date.now()}_${uniqueSuffix}`; // ~23 chars
 
             // Step 2: Initiate (V1 Flow)
             const response = await fetch("/api/paytm/initiate", {
@@ -97,8 +95,9 @@ export default function PaymentForm() {
             }
 
             // Step 3: Redirect to Paytm using txnToken (V1 Flow)
-            // Staging: securegw-stage.paytm.in, Prod: securegw.paytm.in
-            const isStaging = true;
+            // Staging: securegw-stage.paytm.in, Prod: secure.paytmpayments.com
+            // Dynamic Environment Check
+            const isStaging = process.env.NODE_ENV !== "production"; // Default to prod in build
             const baseUrl = isStaging ? "https://securegw-stage.paytm.in" : "https://securegw.paytm.in";
 
             const form = document.createElement("form");

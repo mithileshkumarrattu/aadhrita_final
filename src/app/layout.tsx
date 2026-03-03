@@ -7,14 +7,16 @@ import { Toaster } from 'sonner';
 import SmoothScroll from '@/components/SmoothScroll';
 import Script from 'next/script';
 import { Analytics } from "@vercel/analytics/next";
+import PopupGuard from '@/components/PopupGuard';
 
+// Update metadata with new dates and improved keywords
 export const metadata: Metadata = {
   title: 'Aadhrita 2026',
-  description: 'Join us at Aadhrita 2026, the National Level Techno-Cultural Fest of MVGR College of Engineering. Experience the Weightless Kingdom.',
-  keywords: ['Aadhrita', 'MVGR', 'Fest', 'Hackathon', 'Cultural', 'Technical', '2026'],
+  description: 'Join us at Aadhrita 2026 on March 12th & 13th, the National Level Techno-Cultural Fest of MVGR College of Engineering. Experience the Weightless Kingdom.',
+  keywords: ['Aadhrita', 'MVGR', 'Fest', 'Hackathon', 'Cultural', 'Technical', '2026', 'March 12', 'March 13', 'Weightless Kingdom'],
   openGraph: {
     title: 'Aadhrita 2026',
-    description: 'Join us at Aadhrita 2026, the National Level Techno-Cultural Fest of MVGR College of Engineering.',
+    description: 'Join us at Aadhrita 2026 on March 12th & 13th. The Weightless Kingdom awaits.',
     type: 'website',
   }
 };
@@ -44,15 +46,17 @@ export default function RootLayout({
         </Script>
       </head>
       <body suppressHydrationWarning={true} className="bg-background text-foreground">
-        <AuthProvider>
-          <AuthGuard>
-            <SmoothScroll />
-            {children}
-            <Analytics />
-            <BottomNav />
-            <Toaster position="top-center" richColors />
-          </AuthGuard>
-        </AuthProvider>
+        <PopupGuard>
+          <AuthProvider>
+            <AuthGuard>
+              <SmoothScroll />
+              {children}
+              <Analytics />
+              <BottomNav />
+              <Toaster position="top-center" richColors />
+            </AuthGuard>
+          </AuthProvider>
+        </PopupGuard>
       </body>
     </html>
   );

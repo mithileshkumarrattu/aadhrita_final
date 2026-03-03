@@ -52,21 +52,13 @@ export default function AdminUsersPage() {
     });
 
     React.useEffect(() => {
-        loadUsers();
-    }, []);
-
-    const loadUsers = async () => {
         setLoading(true);
-        try {
-            const data = await UserService.getAllUsers();
+        const unsubscribe = UserService.subscribeToUsers((data) => {
             setUsers(data);
-        } catch (e) {
-            console.error(e);
-            toast.error("Failed to load users");
-        } finally {
             setLoading(false);
-        }
-    };
+        });
+        return () => unsubscribe();
+    }, []);
 
     // --- Derived State: Classes ---
     // Group users by "Batch-Branch-Section"
@@ -108,7 +100,7 @@ export default function AdminUsersPage() {
                 semester: bulkData.semester
             });
             toast.success("Users created successfully!");
-            loadUsers();
+            toast.success("Users created successfully!");
         } catch (e: any) {
             console.error(e);
             // Show Zod or Service Error
@@ -133,7 +125,7 @@ export default function AdminUsersPage() {
                 await UserService.deleteUser(s.id);
             }
             toast.success("Class deleted");
-            loadUsers();
+            toast.success("Class deleted");
         } catch (e) {
             toast.error("Failed to delete class");
         } finally {
@@ -164,7 +156,7 @@ export default function AdminUsersPage() {
                 updates: updates
             });
             toast.success("Range updated successfully");
-            loadUsers();
+            toast.success("Range updated successfully");
         } catch (e: any) {
             toast.error("Update failed: " + e.message);
         } finally {

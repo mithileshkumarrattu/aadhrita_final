@@ -2,12 +2,12 @@
 import { Event } from "./db";
 
 export const EVENT_CATEGORIES = [
-    { id: 'tech-frontier', label: 'Tech Frontier', description: 'Cutting-edge technical competitions', image: '/assets/tech-frontier.jpg' },
-    { id: 'skill-forge', label: 'Skill Forge', description: 'Hands-on workshops and masterclasses', image: '/assets/skill-forge.jpg' },
-    { id: 'brainwave', label: 'Brainwave', description: 'Quizzes, debates, and ideathons', image: '/assets/brainwave.jpg' },
-    { id: 'cultural', label: 'Cultural', description: 'Dance, music, and artistic expression', image: '/assets/culturals.jpg' },
-    { id: 'sports', label: 'Sports', description: 'Inter-college championships', image: '/assets/sports.jpg' },
-    { id: 'spot', label: 'Spot Events', description: 'Fun on-the-spot activities', image: '/assets/spot events.jpg' },
+    { id: 'tech-frontier', label: 'Tech Frontier Challenges', description: 'Robo Race, Drone Tech, Debates', image: '/assets/tech-frontier.jpg' },
+    { id: 'brainwave', label: 'Brain Wave Challenges', description: 'Code Quest, Ideathon, Symposium', image: '/assets/brainwave.jpg' },
+    { id: 'skill-forge', label: 'Skill Forge Workshops', description: 'Blockchain, Electronics', image: '/assets/skill-forge.jpg' },
+    { id: 'multimedia', label: 'Multi Media & E-Sports', description: 'Photography, Reels, Gaming', image: '/assets/multimedia.jpg' },
+    { id: 'cultural', label: 'Cultural Events', description: 'Dance, Music, Fashion Show', image: '/assets/culturals.jpg' },
+    { id: 'sports', label: 'Sports', description: 'Volleyball, Basketball, Throwball', image: '/assets/sports.jpg' },
 ];
 
 export const EVENTS_DATA: Event[] = [
@@ -19,6 +19,8 @@ export const EVENTS_DATA: Event[] = [
         category: 'Flagship',
         imagePosterUrl: 'https://images.unsplash.com/photo-1504384308090-c54be3855833?q=80&w=2662&auto=format&fit=crop',
         registrationStatus: 'open',
+        isRegistrationOpen: true,
+        registrationMode: 'online',
         minTeamSize: 3,
         maxTeamSize: 4,
         entryFeeInr: 600,
@@ -54,6 +56,8 @@ export const EVENTS_DATA: Event[] = [
         category: 'Tech Frontier',
         imagePosterUrl: 'https://images.unsplash.com/photo-1515879218367-8466d910aaa4?q=80&w=2669&auto=format&fit=crop',
         registrationStatus: 'coming_soon',
+        isRegistrationOpen: false,
+        registrationMode: 'online',
         minTeamSize: 1,
         maxTeamSize: 2,
         entryFeeInr: 200,
@@ -83,6 +87,8 @@ export const EVENTS_DATA: Event[] = [
         category: 'Cultural',
         imagePosterUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?q=80&w=2669&auto=format&fit=crop',
         registrationStatus: 'open',
+        isRegistrationOpen: true,
+        registrationMode: 'online',
         minTeamSize: 1,
         maxTeamSize: 10,
         entryFeeInr: 300,

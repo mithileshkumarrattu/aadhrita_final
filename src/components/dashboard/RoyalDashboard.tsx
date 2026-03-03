@@ -20,17 +20,13 @@ export function RoyalDashboard() {
 
     const [loading, setLoading] = React.useState(true);
     const [hackathonTeam, setHackathonTeam] = React.useState<HackathonTeam | null>(null);
-    const [registration, setRegistration] = React.useState<any>(null);
 
     React.useEffect(() => {
         const fetchData = async () => {
             if (!user) return;
             try {
-                // 1. Fetch Main Registration
-                const regSnap = await getDoc(doc(db, 'registrations', user.uid));
-                if (regSnap.exists()) {
-                    setRegistration(regSnap.data());
-                }
+                // CONSOLIDATED: Use userProfile directly (no 'registrations' read)
+                // userProfile already contains hasEntryPass and other fields
 
                 // 2. Fetch Hackathon Team (by Leader Email - fallback)
                 // Ideally we should link by userId in the future
@@ -58,7 +54,8 @@ export function RoyalDashboard() {
 
         try {
             setLoading(true);
-            const orderId = `HACK_${hackathonTeam.id}_${Date.now()}`;
+            const uniqueSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const orderId = `HACK_${Date.now()}_${uniqueSuffix}`; // ~23 chars
             // Assuming Hackathon Fee is fixed, e.g., 500. 
             // TODO: Move to config
             const amount = "500";
@@ -83,7 +80,8 @@ export function RoyalDashboard() {
             // Submit to Paytm
             const form = document.createElement('form');
             form.method = 'POST';
-            form.action = `https://securegw-stage.paytm.in/theia/api/v1/showPaymentPage?mid=${data.mid}&orderId=${data.orderId}`;
+            const baseUrl = process.env.NODE_ENV === "production" ? "https://securegw.paytm.in" : "https://securegw-stage.paytm.in";
+            form.action = `${baseUrl}/theia/api/v1/showPaymentPage?mid=${data.mid}&orderId=${data.orderId}`;
 
             const addField = (name: string, value: string) => {
                 const input = document.createElement('input');
@@ -109,7 +107,7 @@ export function RoyalDashboard() {
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-black"><Loader2 className="w-10 h-10 text-yellow-500 animate-spin" /></div>;
 
     const isHackathonSelected = hackathonTeam?.status === 'approved';
-    const isHackathonPaid = hackathonTeam?.paymentStatus === 'paid';
+    const isHackathonPaid = hackathonTeam?.paymentStatus === 'success';
 
     return (
         <div className="min-h-screen bg-neutral-900 text-white pb-24">
@@ -138,7 +136,7 @@ export function RoyalDashboard() {
                             <div>
                                 <h3 className="text-yellow-500 text-xs font-bold uppercase tracking-[0.2em] mb-1">Citizen Pass</h3>
                                 <h1 className={cn("text-2xl font-bold text-white", cinzel.className)}>{userProfile?.fullName}</h1>
-                                <p className="text-neutral-400 text-xs font-mono mt-1">{registration?.regNo || "REG-XXXX"}</p>
+                                <p className="text-neutral-400 text-xs font-mono mt-1">{userProfile?.registrationNumber || "REG-XXXX"}</p>
                             </div>
                             <Shield className="w-8 h-8 text-yellow-500/50" />
                         </div>
@@ -148,9 +146,9 @@ export function RoyalDashboard() {
                             <div className="space-y-1">
                                 <div className="text-[10px] text-neutral-500 uppercase font-bold">Status</div>
                                 <div className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border",
-                                    registration?.hasEntryPass ? "bg-green-500/10 text-green-400 border-green-500/30" : "bg-red-500/10 text-red-400 border-red-500/30")}>
-                                    {registration?.hasEntryPass ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-                                    {registration?.hasEntryPass ? "Citizenship Granted" : "Payment Pending"}
+                                    userProfile?.hasEntryPass ? "bg-green-500/10 text-green-400 border-green-500/30" : "bg-red-500/10 text-red-400 border-red-500/30")}>
+                                    {userProfile?.hasEntryPass ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+                                    {userProfile?.hasEntryPass ? "Citizenship Granted" : "Payment Pending"}
                                 </div>
                             </div>
 

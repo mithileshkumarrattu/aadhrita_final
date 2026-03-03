@@ -4,10 +4,17 @@ import { doc, getDoc, setDoc, serverTimestamp, collection, runTransaction } from
 export const RegistrationService = {
     // 1. Get User's "Passport" (Universal Profile)
     getUserProfile: async (userId: string): Promise<UserRegistration | null> => {
-        const docRef = doc(db, COLLECTIONS.REGISTRATIONS, userId);
+        // UPDATED: Fetch from 'users' collection (Universal Profile) instead of legacy 'registrations'
+        const docRef = doc(db, COLLECTIONS.USERS, userId);
         const snapshot = await getDoc(docRef);
         if (snapshot.exists()) {
-            return snapshot.data() as UserRegistration;
+            // We cast UserProfile to UserRegistration as they share core fields
+            // Ensure we handle missing fields gracefully if schema differs slightly
+            const data = snapshot.data();
+            return {
+                ...data,
+                userId: data.uid, // Map uid to userId
+            } as unknown as UserRegistration;
         }
         return null;
     },
@@ -30,12 +37,18 @@ export const RegistrationService = {
         eventId: string,
         formData: any,
         userProfile: UserRegistration,
-        paymentId?: string
+        paymentId?: string,
+        options: { status?: 'pending' | 'success' | 'completed' | 'failed' | 'free' } = {}
     ): Promise<string> => {
+
+        let finalStatus: any = 'pending';
+        if (paymentId) finalStatus = 'success';
+        else if (options.status) finalStatus = options.status;
+
         const registrationData: EventRegistration = {
             eventId,
             userId,
-            paymentStatus: paymentId ? 'success' : 'pending',
+            paymentStatus: finalStatus,
             status: 'active',
             userSnapshot: {
                 fullName: userProfile.fullName,

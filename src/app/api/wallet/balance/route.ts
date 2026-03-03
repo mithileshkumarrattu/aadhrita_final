@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { doc, getDoc } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebase-admin';
 import { provider, getTokenContract } from '@/lib/wallet-utils';
 import { formatEther } from 'ethers';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
+    const collectionName = searchParams.get('collectionName') || 'users';
 
     if (!userId) {
         return NextResponse.json({ error: 'userId required' }, { status: 400 });
@@ -14,9 +14,9 @@ export async function GET(request: Request) {
 
     try {
         // 1. Get Address
-        const userDocRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userDocRef);
-        const address = userDoc.exists() ? userDoc.data()?.walletAddress : null;
+        const userDocRef = adminDb.collection(collectionName).doc(userId);
+        const userDoc = await userDocRef.get();
+        const address = userDoc.exists ? userDoc.data()?.walletAddress : null;
 
         if (!address) {
             return NextResponse.json({

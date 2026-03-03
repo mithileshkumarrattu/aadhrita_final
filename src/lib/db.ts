@@ -40,6 +40,7 @@ export interface UserRegistration {
     numberOfGirls?: number;
     registrationType?: 'Individual' | 'Team';
     accommodationDates?: string[]; // ['25-02-2026', ...]
+    accommodationType?: 'with_food' | 'without_food'; // ₹500 or ₹300
 
     // Phase 2: Registration Economy Fields
     collegeType: 'MVGR' | 'OTHER';
@@ -48,7 +49,17 @@ export interface UserRegistration {
     hasEntryPass: boolean;
     hasHackathonPass: boolean;
     paidEventIds: string[]; // List of registered paid events
+    registeredEventIds?: string[]; // Added by callback
     aftCoins: number; // Wallet Balance
+    paymentStatus?: 'pending' | 'success' | 'failed';
+    paymentDetails?: {
+        amount: number;
+        currency: string;
+        orderId: string;
+        txnId?: string;
+        paymentDate: string;
+        eventsBreakdown?: { eventId: string; name: string }[];
+    };
 
     categories: string[]; // ['Technical', 'Cultural', 'Sports']
     completed: boolean;
@@ -71,6 +82,7 @@ export interface HackathonTeam {
         email: string;
         phone: string;
         idCardUrl: string;
+        accommodation?: { mar11: boolean; mar13: boolean };
     };
     members: {
         name: string;
@@ -80,6 +92,7 @@ export interface HackathonTeam {
         email: string;
         phone: string;
         idCardUrl: string;
+        accommodation?: { mar11: boolean; mar13: boolean };
     }[];
     pptUrl: string;
     pptTitle: string;
@@ -90,8 +103,27 @@ export interface HackathonTeam {
     emergencyContact: string;
     referralSource: string;
     status: 'pending' | 'approved' | 'rejected';
-    paymentStatus?: 'pending' | 'paid' | 'failed';
+    paymentStatus?: 'pending' | 'success' | 'failed' | 'paid';
     transactionId?: string;
+    totalAmount?: number;
+    hackathonTotal?: number;
+    accommodationTotal?: number;
+    passTokens?: { name: string; token: string; isLeader: boolean }[];
+    createdAt: any;
+}
+
+export interface HackathonPass {
+    token: string;
+    teamId: string;
+    teamName: string;
+    memberName: string;
+    memberRegNo: string;
+    memberEmail: string;
+    memberPhone: string;
+    memberIdCardUrl: string;
+    isLeader: boolean;
+    accommodation: { mar11: boolean; mar13: boolean };
+    collegeName: string;
     createdAt: any;
 }
 
@@ -102,8 +134,29 @@ export interface TeamMember {
     category: string; // Allow custom strings like "Chief Patron"
     designation?: string; // e.g. "Dean (ES)", "Head of Dept" - distinct from 'role' if needed
     imageUrl?: string;
-    phone?: string;
+    phone: string;
+    email: string;
     order?: number; // For sorting
+}
+
+export interface StaffCredential {
+    id?: string; // Document ID (usually username or auto-id, let's use username for uniqueness if possible, or auto-id)
+    username: string; // Unique Login ID
+    password: string; // Simple password as requested
+    role: 'security' | 'coordinator' | 'hackathon_coordinator' | 'entrypass_viewer' | 'registrations_viewer';
+    assignedEventId?: string | null; // For coordinators: The ID of the event they manage
+    createdAt?: any;
+}
+
+export interface AccessLog {
+    id?: string;
+    userId: string;
+    userName: string;
+    userRegNo: string;
+    scanType: 'ENTRY' | 'EXIT';
+    scannerId: string; // The username of the security guard
+    timestamp: any;
+    location?: string; // 'Main Gate', 'Auditorium' etc.
 }
 
 // -- Shared Types for Event Logic --
@@ -148,7 +201,7 @@ export interface Event {
     id?: string;
     title: string;
     description: string;
-    category: 'Flagship' | 'Tech Frontier' | 'Skill Forge' | 'Brainwave' | 'Cultural' | 'Sports' | 'Spot';
+    category: 'Flagship' | 'Tech Frontier' | 'Skill Forge' | 'Brainwave' | 'Cultural' | 'Sports' | 'Spot' | 'Multi Media' | 'E-Sports' | string;
     imagePosterUrl: string;
 
     // Status
@@ -170,6 +223,12 @@ export interface Event {
     rulebookUrl?: string; // Optional: Link to rulebook
     schedule?: string;
     venue?: string;
+    date?: string; // e.g. "2026-03-12"
+    time?: string; // e.g. "10:00 AM"
+
+    // Registration Control
+    isRegistrationOpen: boolean;
+    registrationMode: 'online' | 'offline' | 'none'; // For "Spot Events" or "Offline Only"
 
     createdAt: any;
 }
@@ -202,13 +261,13 @@ export interface EventRegistration {
     role?: 'Leader' | 'Member';
     teamMembers?: any[]; // Legacy or cached members list
 
-    // Snapshot of User Data
-    userSnapshot: {
+    // Snapshot of User Data (Legacy / Fallback)
+    userSnapshot?: {
         fullName: string;
         collegeName: string;
         mobileNumber: string;
         email: string;
-        [key: string]: any; // Allow flexible fields like yearOfStudy
+        [key: string]: any;
     };
 
     // Dynamic Responses
@@ -248,6 +307,7 @@ export const COLLECTIONS = {
     USERS: 'users',
     REGISTRATIONS: 'registrations', // Extra details
     HACKATHON: 'hackathon_teams',
+    FREEFIRE_TEAMS: 'freefire_teams', // FreeFire Esports Tournament
     WALLETS: 'wallets',
     NOTIFICATIONS: 'notifications',
     NOTES: 'notes',
@@ -255,7 +315,10 @@ export const COLLECTIONS = {
     EVENTS: 'events',
     CLUBS: 'clubs',
     EVENT_REGISTRATIONS: 'event_registrations', // The new specific event registrations
-    ORDER_HISTORY: 'order_history'
+    ORDER_HISTORY: 'order_history',
+    STAFF: 'staff_credentials',
+    ACCESS_LOGS: 'access_logs',
+    HACKATHON_PASSES: 'hackathon_passes'
 };
 
 // --- User Services ---
@@ -269,14 +332,33 @@ export const createUser = async (userData: UserProfile) => {
     }, { merge: true });
 };
 
-// --- Event Services ---
+// --- In-memory cache for events (avoids fetching the full events collection on every page load) ---
+// TTL = 5 minutes. Shared across all users in the same server/module scope.
+let _eventsCache: { data: Event[]; allData: Event[]; ts: number } | null = null;
+const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-export const getEvents = async (month?: string, context?: string): Promise<Event[]> => {
-    // Basic implementation: just fetching all events for now as filtering logic wasn't fully restored
-    // In a real app, I'd apply where() clauses based on month/context
+export const getEvents = async (month?: string, context?: string, includeAll: boolean = false): Promise<Event[]> => {
+    // Serve from cache if still fresh
+    if (_eventsCache && Date.now() - _eventsCache.ts < EVENTS_CACHE_TTL_MS) {
+        return includeAll ? _eventsCache.allData : _eventsCache.data;
+    }
+
+    // Cache miss — fetch from Firestore
     const q = query(collection(db, COLLECTIONS.EVENTS));
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
+    const all = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
+
+    const filtered = all.filter(e => {
+        const cat = (e.category || '').toLowerCase();
+        const id = (e.id || '').toLowerCase();
+        // Exclude hackathon and flagship events — they have dedicated registration flows
+        return !cat.includes('hackathon') && !cat.includes('flagship') && id !== 'hackathon';
+    });
+
+    // Store in cache
+    _eventsCache = { data: filtered, allData: all, ts: Date.now() };
+
+    return includeAll ? all : filtered;
 };
 
 export const addEvent = async (event: any) => {
@@ -299,14 +381,19 @@ export const getUserEventRegistrations = async (userId: string) => {
     );
     const querySnapshot = await getDocs(q);
 
-    // Filter client-side to remove the main "Entry Pass" registration if it shares the collection name
-    // Entry Pass is in root 'registrations', Events are in 'events/{id}/registrations'
-    // Both act as registrations. But we might want to distinguish.
-    // The main entry pass likely doesn't have an 'eventId' field in the same way or shares the same schema.
-    // If we want ONLY My Events card to show specific events:
+    // Filter client-side to:
+    // 1. Remove the main "Entry Pass" registration if it shares the collection name
+    // 2. ONLY include SUCCESSFUL or FREE registrations (NOT pending!)
+    // This prevents users who opened payment gateway but didn't pay from showing as registered.
     return querySnapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as any))
-        .filter(reg => reg.eventId && reg.eventId !== 'ENTRY_PASS'); // Basic filtering
+        .filter(reg => {
+            // Must have eventId and not be Entry Pass
+            if (!reg.eventId || reg.eventId === 'ENTRY_PASS') return false;
+            // CRITICAL: Only count successful or free payments, NOT pending
+            const status = reg.paymentStatus;
+            return status === 'success' || status === 'free' || status === 'completed';
+        });
 };
 
 // --- Notification Services ---

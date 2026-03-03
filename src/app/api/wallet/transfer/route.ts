@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { doc, getDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebase-admin';
 import { getWalletInstance, getTokenContract, getAdminWallet, provider } from '@/lib/wallet-utils';
 import { parseEther, formatEther } from 'ethers';
+import { FieldValue } from 'firebase-admin/firestore';
 
 export async function POST(request: Request) {
     try {
@@ -13,10 +13,10 @@ export async function POST(request: Request) {
         }
 
         // 1. Retrieve Encrypted Key
-        const walletDocRef = doc(db, 'wallets', userId);
-        const walletDoc = await getDoc(walletDocRef);
+        const walletDocRef = adminDb.collection('wallets').doc(userId);
+        const walletDoc = await walletDocRef.get();
 
-        if (!walletDoc.exists()) {
+        if (!walletDoc.exists) {
             return NextResponse.json({ error: 'Wallet not found' }, { status: 404 });
         }
 
@@ -81,14 +81,14 @@ export async function POST(request: Request) {
         const receipt = await tx.wait();
 
         // 7. Log Transaction
-        await addDoc(collection(db, 'transactions'), {
+        await adminDb.collection('transactions').add({
             from: fromAddress,
             to: toAddress,
             amount: amount,
             txHash: receipt.hash,
             userId: userId,
             status: 'success',
-            timestamp: serverTimestamp(),
+            timestamp: FieldValue.serverTimestamp(),
             type: 'transfer'
         });
 

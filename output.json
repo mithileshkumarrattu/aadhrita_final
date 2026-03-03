@@ -1,0 +1,260 @@
+{
+  "hackathon_teams": [
+    {
+      "docId": "2rJpyrlHTBVZHDBgd59xApLsqao2",
+      "teamName": "Elite 8",
+      "teamSize": 4,
+      "collegeName": "GMRIT",
+      "collegeCity": "RAJAM",
+      "collegeState": "Andhra Pradesh",
+      "leader": {
+        "name": "K THANMAI SRI",
+        "regNo": "24341A4254",
+        "dept": "CSE(AI&ML)",
+        "year": "2nd",
+        "email": "thanmaisri75@gmail.com",
+        "phone": "9392703388",
+        "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772388476/hackathon_ids/Elite_8_lead_K_THANMAI_SRI_ID.jpg"
+      },
+      "members": [
+        {
+          "name": "G NITHIN",
+          "regNo": "24341A4231",
+          "dept": "CSE(AI&ML)",
+          "year": "2nd",
+          "email": "nithinganta3408@gmail.com",
+          "phone": "9398874279",
+          "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772388477/hackathon_ids/Elite_8_member2_G_NITHIN_ID.jpg"
+        },
+        {
+          "name": "B VIKRAM",
+          "regNo": "24341A4212",
+          "dept": "CSE(AI&ML)",
+          "year": "2nd",
+          "email": "beenavikram17@gmail.com",
+          "phone": "8317620868",
+          "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772388478/hackathon_ids/Elite_8_member3_B_VIKRAM_ID.jpg"
+        },
+        {
+          "name": "J SIDHARTH KUMAR",
+          "regNo": "24341A0464",
+          "dept": "ECE",
+          "year": "2nd",
+          "email": "sidharthjami00@gmail.com",
+          "phone": "8457880595",
+          "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772388480/hackathon_ids/Elite_8_member4_J_SIDHARTH_KUMAR_ID.jpg"
+        }
+      ],
+      "pptUrl": "https://res.cloudinary.com/dvzm0fata/raw/upload/v1772388475/hackathon_ppts/Elite_8_Worker_Safety_Violation_Detector.jpg",
+      "pptTitle": "Worker Safety Violation Detector",
+      "agreedToRules": false,
+      "declaredOriginality": false,
+      "previousParticipation": false,
+      "communicationChannel": "WhatsApp",
+      "emergencyContact": "9398874279",
+      "referralSource": "College Faculty",
+      "createdAt": {
+        "_seconds": 1772388481,
+        "_nanoseconds": 792000000
+      },
+      "status": "approved"
+    },
+    {
+      "docId": "D03c4Nkr3dYs6wdHo97BlOdyNZB3",
+      "teamName": "Triage",
+      "teamSize": 3,
+      "collegeName": "Aditya institute of technology and management",
+      "collegeCity": "Tekkali",
+      "collegeState": "Andhra pradesh",
+      "pptUrl": "https://res.cloudinary.com/dvzm0fata/raw/upload/v1770454893/hackathon_ppts/Triage_SURAKSHA%20NETRASURAKSHA_NETRA_111.pptx",
+      "pptTitle": "SURAKSHA NETRA",
+      "agreedToRules": false,
+      "declaredOriginality": false,
+      "previousParticipation": false,
+      "communicationChannel": "WhatsApp",
+      "emergencyContact": "9703525972",
+      "referralSource": "College Faculty",
+      "createdAt": {
+        "_seconds": 1770454896,
+        "_nanoseconds": 925000000
+      },
+      "status": "approved",
+      "leader": {
+        "year": "2nd",
+        "dept": "CSE",
+        "name": "Jayasri katari",
+        "regNo": "24A51A05M5",
+        "phone": "9703525972",
+        "email": "jayasrikatari496@gmail.com",
+        "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1770454893/hackathon_ids/Triage_Jayasri%20katariid_card.jpg",
+        "accommodation": {
+          "mar11": true,
+          "mar13": false
+        }
+      },
+      "totalAmount": 3300,
+      "accommodationTotal": 1500,
+      "hackathonTotal": 1800,
+      "members": [
+        {
+          "phone": "9492025487",
+          "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1770454894/hackathon_ids/Triage_Marpu%20Sravaniid_card.jpg",
+          "regNo": "24A51A05N0",
+          "dept": "CSE",
+          "email": "marpusravani1002@gmail.com",
+          "year": "2nd",
+          "name": "Marpu Sravani",
+          "accommodation": {
+            "mar11": true,
+            "mar13": false
+          }
+        },
+        {
+          "name": "Dola Harivardhan",
+          "regNo": "24A51A05L7",
+          "dept": "CSE",
+          "email": "harivardhandola@gmail.com",
+          "year": "2nd",
+          "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1770454895/hackathon_ids/Triage_Dola%20Harivardhanid_card.jpg",
+          "phone": "8179183927",
+          "accommodation": {
+            "mar11": true,
+            "mar13": false
+          }
+        }
+      ],
+      "paymentStatus": "paid",
+      "transactionId": "HACK_1771227595289_JANFM",
+      "passTokens": [
+        {
+          "name": "Jayasri katari",
+          "token": "8ed5f0b59aeddc67ebc5cf79",
+          "isLeader": true
+        },
+        {
+          "name": "Marpu Sravani",
+          "token": "6e773646497b8232e45db6e3",
+          "isLeader": false
+        },
+        {
+          "name": "Dola Harivardhan",
+          "token": "e1d041e2037daf501cfe6cb6",
+          "isLeader": false
+        }
+      ]
+    },
+    {
+      "docId": "apgsj85BQ5WYJ4hDHs1CwhjYpCf2",
+      "teamName": "IntelliMentors",
+      "teamSize": 4,
+      "collegeName": "GMR Institute of Technology",
+      "collegeCity": "Rajam",
+      "collegeState": "Andhra Pradesh",
+      "leader": {
+        "name": "Madhu sudhana rao Voonna",
+        "regNo": "23341A12C8",
+        "dept": "IT",
+        "year": "3rd",
+        "email": "madhusudhanaraovoonna@gmail.com",
+        "phone": "7729963937",
+        "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772208197/hackathon_ids/IntelliMentors_lead_Madhu_sudhana_rao_Voonna_ID.jpg"
+      },
+      "members": [
+        {
+          "name": "Shaik Suleman",
+          "regNo": "23341A05M4",
+          "dept": "CSE",
+          "year": "3rd",
+          "email": "shaiksuleman815@gmail.com",
+          "phone": "9381184819",
+          "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772208199/hackathon_ids/IntelliMentors_member2_Shaik_Suleman_ID.jpg"
+        },
+        {
+          "name": "Valtheti Ganesh",
+          "regNo": "23341A12C3",
+          "dept": "IT",
+          "year": "3rd",
+          "email": "ganeshvaltheti275@gmail.com",
+          "phone": "9392758114",
+          "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772208200/hackathon_ids/IntelliMentors_member3_Valtheti_Ganesh_ID.jpg"
+        },
+        {
+          "name": "Patchigulla Sreeja",
+          "regNo": "23341A1287",
+          "dept": "IT",
+          "year": "3rd",
+          "email": "sreejapatchigulla@gmail.com",
+          "phone": "7842598323",
+          "idCardUrl": "https://res.cloudinary.com/dvzm0fata/image/upload/v1772208201/hackathon_ids/IntelliMentors_member4_Patchigulla_Sreeja_ID.jpg"
+        }
+      ],
+      "pptUrl": "https://res.cloudinary.com/dvzm0fata/raw/upload/v1772208196/hackathon_ppts/IntelliMentors_AI_Mentor__Emotion_Adaptive_Smart_Exam_Preparation_Assistant.jpg",
+      "pptTitle": "AI Mentor: Emotion-Adaptive Smart Exam Preparation Assistant",
+      "agreedToRules": false,
+      "declaredOriginality": false,
+      "previousParticipation": false,
+      "communicationChannel": "Email",
+      "emergencyContact": "7729963937",
+      "referralSource": "Friends/Peers",
+      "createdAt": {
+        "_seconds": 1772208203,
+        "_nanoseconds": 350000000
+      },
+      "status": "approved"
+    }
+  ],
+  "registrations": [
+    {
+      "path": "events/bridge-craft-challenge/registrations/7c6XBXDAb3EXtKqdaYF6",
+      "eventId": "bridge-craft-challenge",
+      "userId": "c2dW63kIfxOxYXiIjP4gHXefFVw2",
+      "status": "active",
+      "teamId": "SSS_4998",
+      "teamName": "SSS",
+      "responses": {
+        "teamName": "SSS",
+        "teamId": "SSS_4998"
+      },
+      "teamMembers": [],
+      "role": "Leader",
+      "createdAt": {
+        "_methodName": "serverTimestamp"
+      },
+      "paymentStatus": "success"
+    },
+    {
+      "path": "events/bridge-craft-challenge/registrations/EdV91dIiNeMQBSVeUJ45",
+      "eventId": "bridge-craft-challenge",
+      "userId": "Fg4XiCZzkcPpl5UVf81vobsq2qf1",
+      "status": "active",
+      "teamId": "TEAM_-_7_3927",
+      "teamName": null,
+      "responses": {
+        "teamId": "TEAM_-_7_3927"
+      },
+      "teamMembers": [],
+      "role": "Member",
+      "createdAt": {
+        "_methodName": "serverTimestamp"
+      },
+      "paymentStatus": "success"
+    },
+    {
+      "path": "events/bridge-craft-challenge/registrations/HPP7wAl7zAJGMOqTb4iK",
+      "eventId": "bridge-craft-challenge",
+      "userId": "qA3dJt20goc5Cfct43aZiAnne3R2",
+      "status": "active",
+      "teamId": "TEAM_-_7_3927",
+      "teamName": null,
+      "responses": {
+        "teamId": "TEAM_-_7_3927"
+      },
+      "teamMembers": [],
+      "role": "Member",
+      "createdAt": {
+        "_methodName": "serverTimestamp"
+      },
+      "paymentStatus": "success"
+    }
+  ]
+}

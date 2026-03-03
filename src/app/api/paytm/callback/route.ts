@@ -1,223 +1,331 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySignature } from "@/lib/paytmChecksum";
 import { adminDb } from "@/lib/firebase-admin";
+import { processSuccessfulPayment } from "@/lib/payment-processing";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the merchant key exactly as configured — no truncation, no mutation.
+ * Throws at call-time if the key is missing or wrong length so the problem
+ * surfaces immediately rather than silently degrading signature security.
+ */
+function getMerchantKey(): string {
+    let key = (process.env.PAYTM_MERCHANT_KEY ?? "").trim();
+
+    // Strip surrounding quotes that some env loaders add
+    if (key.startsWith('"') && key.endsWith('"')) {
+        key = key.slice(1, -1);
+    }
+
+    if (!key) {
+        throw new Error("PAYTM_MERCHANT_KEY is not set in environment variables.");
+    }
+
+    // Paytm merchant keys are exactly 16 characters.
+    // Do NOT truncate — if it's wrong, fail loudly.
+    if (key.length !== 16) {
+        throw new Error(
+            `PAYTM_MERCHANT_KEY has invalid length ${key.length} (expected 16). ` +
+            `Check your environment configuration.`
+        );
+    }
+
+    return key;
+}
+
+/**
+ * Verifies the payment status directly with Paytm's Transaction Status API.
+ * This is the ONLY authoritative source of truth for whether money was received.
+ * Never rely solely on the incoming callback body's STATUS field.
+ */
+async function verifyPaymentWithPaytm(
+    orderId: string,
+    expectedAmount: string
+): Promise<{ verified: boolean; status: string; txnId: string | null; paidAmount: string | null }> {
+    const merchantId = process.env.PAYTM_MERCHANT_ID;
+    const merchantKey = getMerchantKey();
+
+    if (!merchantId) {
+        throw new Error("PAYTM_MERCHANT_ID is not set in environment variables.");
+    }
+
+    // Build the request body for Paytm's order status API
+    const body = {
+        body: { mid: merchantId, orderId },
+        head: { signature: "" }, // Paytm's status API also requires a checksum in some versions
+    };
+
+    const response = await fetch(
+        "https://securegw.paytm.in/v3/order/status",
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        }
+    );
+
+    if (!response.ok) {
+        throw new Error(`Paytm order status API returned HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const resultInfo = data?.body?.resultInfo;
+    const txnList = data?.body?.txnList ?? [];
+    const latestTxn = txnList[0] ?? {};
+
+    const paytmStatus: string = resultInfo?.resultStatus ?? "FAILED";
+    const paidAmount: string | null = latestTxn.txnAmount ?? null;
+    const txnId: string | null = latestTxn.txnId ?? null;
+
+    // Verify status
+    const isSuccess = paytmStatus === "TXN_SUCCESS";
+
+    // CRITICAL: Also verify the amount matches what we expected.
+    // This prevents V1-style attacks where ₹1 was paid but a full pass is granted.
+    if (isSuccess && paidAmount !== null) {
+        const paid = parseFloat(paidAmount);
+        const expected = parseFloat(expectedAmount);
+        if (isNaN(paid) || isNaN(expected) || Math.abs(paid - expected) > 0.01) {
+            console.error(
+                `[Callback] AMOUNT MISMATCH for orderId=${orderId}: ` +
+                `expected=${expectedAmount} paid=${paidAmount}`
+            );
+            return { verified: false, status: "AMOUNT_MISMATCH", txnId, paidAmount };
+        }
+    }
+
+    return {
+        verified: isSuccess,
+        status: paytmStatus,
+        txnId,
+        paidAmount,
+    };
+}
+
+// ─── Main Route Handler ────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-    try {
-        // Paytm sends data as application/x-www-form-urlencoded
-        const formData = await req.formData();
-        const paytmResponse: any = {};
+    const baseUrl = new URL(req.url).origin;
 
+    try {
+        // ── Step 1: Parse form body ───────────────────────────────────────────
+        const formData = await req.formData();
+        const paytmResponse: Record<string, string> = {};
         formData.forEach((value, key) => {
-            paytmResponse[key] = value;
+            paytmResponse[key] = value as string;
         });
 
-        console.log("Paytm Callback Received:", paytmResponse);
+        console.log("[Callback] Received payload keys:", Object.keys(paytmResponse));
 
-        // 1. Verify Checksum
+        // ── Step 2: Validate CHECKSUMHASH ─────────────────────────────────────
         const checksum = paytmResponse.CHECKSUMHASH;
         if (!checksum) {
-            return NextResponse.json({ error: "Checksum missing" }, { status: 400 });
+            console.error("[Callback] Missing CHECKSUMHASH in payload");
+            return new NextResponse(null, { status: 400 });
         }
 
-        // We need to remove CHECKSUMHASH from params for verification
+        // getMerchantKey() throws if the key is misconfigured — caught below.
+        const paytmKey = getMerchantKey();
+
         const paramsForVerification = { ...paytmResponse };
         delete paramsForVerification.CHECKSUMHASH;
 
-        const isValid = await verifySignature(paramsForVerification, process.env.PAYTM_MERCHANT_KEY || "", checksum);
-
+        const isValid = await verifySignature(paramsForVerification, paytmKey, checksum);
         if (!isValid) {
-            console.error("Checksum Verification Failed");
-            return NextResponse.json({ error: "Checksum verification failed" }, { status: 400 });
+            console.error("[Callback] Checksum verification FAILED — possible forgery attempt");
+            return new NextResponse(null, { status: 400 });
         }
 
-        // 2. Extract Data
-        const { ORDERID, STATUS, TXNID, TXNAMOUNT } = paytmResponse;
+        // ── Step 3: Extract ORDERID — the only field we trust from the body ───
+        // Everything else (STATUS, TXNID, TXNAMOUNT) must be verified server-side.
+        const { ORDERID } = paytmResponse;
+        if (!ORDERID) {
+            console.error("[Callback] Missing ORDERID in verified payload");
+            return new NextResponse(null, { status: 400 });
+        }
 
-        // 3. Find Transaction in Firestore
-        // Note: Using 'transactions' collection
-        const snapshot = await adminDb.collection("transactions").where("orderId", "==", ORDERID).get();
+        console.log(`[Callback] Checksum valid for ORDERID=${ORDERID}`);
+
+        // ── Step 4: Look up transaction in Firestore ──────────────────────────
+        const snapshot = await adminDb
+            .collection("transactions")
+            .where("orderId", "==", ORDERID)
+            .limit(1)
+            .get();
 
         if (snapshot.empty) {
-            console.error("Transaction Not Found:", ORDERID);
-            return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
+            console.error(`[Callback] Transaction not found for ORDERID=${ORDERID}`);
+            await adminDb.collection("payment_issues").add({
+                type: "MISSING_TRANSACTION_ON_CALLBACK",
+                orderId: ORDERID,
+                callbackPayloadKeys: Object.keys(paytmResponse),
+                note: "Callback received for an order with no matching transaction record. " +
+                    "Manually verify with Paytm dashboard and grant pass if payment confirmed.",
+                createdAt: new Date().toISOString(),
+                resolved: false,
+            });
+            return NextResponse.redirect(
+                `${baseUrl}/payment-failed?orderId=${ORDERID}&reason=not_found`,
+                { status: 303 }
+            );
         }
 
-        const doc = snapshot.docs[0];
-        const transaction = doc.data();
+        const txnDoc = snapshot.docs[0];
+        const transaction = txnDoc.data() as Record<string, any>;
 
-        // 4. Validate Amount
-        if (parseFloat(transaction.amount) !== parseFloat(TXNAMOUNT)) {
-            console.warn("Amount Mismatch:", { expected: transaction.amount, received: TXNAMOUNT });
-            // We generally flag this but might still record the status
+        // ── Step 5: Idempotency — skip if already processed ──────────────────
+        if (transaction.status === "SUCCESS" || transaction.status === "FAILED") {
+            console.log(`[Callback] Already processed as ${transaction.status} — skipping`);
+            const eventIdParam = transaction.eventIds?.[0]
+                ? `&eventId=${transaction.eventIds[0]}`
+                : "";
+            const dest = transaction.status === "SUCCESS" ? "payment-success" : "payment-failed";
+            return NextResponse.redirect(
+                `${baseUrl}/${dest}?orderId=${ORDERID}${eventIdParam}`,
+                { status: 303 }
+            );
         }
 
-        // 5. Update Status
-        let finalStatus = "FAILED";
-        if (STATUS === "TXN_SUCCESS") {
+        // ── Step 6: Server-side payment verification with Paytm ──────────────
+        const expectedAmount = transaction.amount as string;
+        let verificationResult: Awaited<ReturnType<typeof verifyPaymentWithPaytm>>;
+
+        try {
+            verificationResult = await verifyPaymentWithPaytm(ORDERID, expectedAmount);
+        } catch (verifyErr: any) {
+            console.error("[Callback] Paytm verification API error:", verifyErr.message);
+            // Can't determine payment outcome — log for manual review, don't grant pass.
+            await adminDb.collection("payment_issues").add({
+                type: "PAYTM_VERIFICATION_API_ERROR",
+                orderId: ORDERID,
+                userId: transaction.userId ?? null,
+                error: verifyErr.message,
+                note: "Could not reach Paytm status API. Payment outcome unknown. Manual reconciliation required.",
+                createdAt: new Date().toISOString(),
+                resolved: false,
+            });
+            return NextResponse.redirect(
+                `${baseUrl}/payment-failed?orderId=${ORDERID}&reason=verification_error`,
+                { status: 303 }
+            );
+        }
+
+        const { verified, status: verifiedStatus, txnId, paidAmount } = verificationResult;
+
+        console.log(
+            `[Callback] Paytm verification result for ORDERID=${ORDERID}: ` +
+            `verified=${verified} status=${verifiedStatus} txnId=${txnId} paidAmount=${paidAmount}`
+        );
+
+        // ── Step 7: Handle amount mismatch ────────────────────────────────────
+        if (verifiedStatus === "AMOUNT_MISMATCH") {
+            await txnDoc.ref.update({
+                status: "FAILED",
+                failureReason: "AMOUNT_MISMATCH",
+                paidAmount: paidAmount ?? null,
+                expectedAmount,
+                updatedAt: new Date().toISOString(),
+            });
+            await adminDb.collection("payment_issues").add({
+                type: "AMOUNT_MISMATCH",
+                orderId: ORDERID,
+                userId: transaction.userId ?? null,
+                expectedAmount,
+                paidAmount: paidAmount ?? null,
+                paytmTxnId: txnId ?? null,
+                note: "User paid a different amount than expected. Pass NOT granted. Manual review required.",
+                createdAt: new Date().toISOString(),
+                resolved: false,
+            });
+            return NextResponse.redirect(
+                `${baseUrl}/payment-failed?orderId=${ORDERID}&reason=amount_mismatch`,
+                { status: 303 }
+            );
+        }
+
+        // ── Step 8: Determine final status from verified result ───────────────
+        let finalStatus: "SUCCESS" | "PENDING" | "FAILED";
+        if (verified && verifiedStatus === "TXN_SUCCESS") {
             finalStatus = "SUCCESS";
-        } else if (STATUS === "PENDING") {
+        } else if (verifiedStatus === "PENDING") {
             finalStatus = "PENDING";
+        } else {
+            finalStatus = "FAILED";
         }
 
-        await doc.ref.update({
+        // ── Step 9: Update the transaction record ─────────────────────────────
+        await txnDoc.ref.update({
             status: finalStatus,
-            paytmTxnId: TXNID || null,
-            gatewayResponse: STATUS,
-            paytmResponse: JSON.stringify(paytmResponse),
-            updatedAt: new Date().toISOString()
+            paytmTxnId: txnId ?? null,
+            gatewayResponse: verifiedStatus,
+            verifiedByServer: true,          // flag: this status was server-verified
+            paidAmount: paidAmount ?? null,
+            updatedAt: new Date().toISOString(),
         });
 
-        // --- 6. Update User & Event Registrations on Success ---
+        // ── Step 10: Post-payment actions ─────────────────────────────────────
+        const eventIdParam = transaction.eventIds?.[0]
+            ? `&eventId=${transaction.eventIds[0]}`
+            : "";
+
         if (finalStatus === "SUCCESS") {
-            try {
-                const userId = transaction.userId;
-                const eventIds = transaction.eventIds || [];
-
-                if (userId) {
-                    // A. Update Main User Registration (Entry Pass)
-                    // A. Update Main User Registration (Entry Pass)
-                    // Update both 'registrations' (detailed form data) and 'users' (auth profile)
-                    await adminDb.collection("registrations").doc(userId).update({
-                        hasEntryPass: true,
-                    });
-                    await adminDb.collection("users").doc(userId).update({
-                        hasEntryPass: true
-                    });
-
-                    // B. Update Individual Event Registrations
-                    // We need to find the registration doc for each event for this user.
-                    // Since we don't have the regDocId, we query.
-                    for (const eventId of eventIds) {
-                        // Hackathon Special Handling
-                        if (eventId === 'HACKATHON') {
-                            // Find team where leader.email matches transaction.email
-                            // Note: Hackathon Teams are in 'hackathon_teams' collection (assuming standard naming)
-                            // Ideally, we'd store the teamId or docId in the transaction metadata, but querying by email is a decent fallback for now if unique.
-
-                            // Trying 'hackathon_teams' or 'hackathon_registrations' - based on User's previous file it seemed like 'hackathon_teams' might be the intent or default.
-                            // I will use 'hackathon_teams' as it's the standard for the interface name HackathonTeam.
-                            const hQuery = await adminDb.collection("hackathon_teams")
-                                .where("leader.email", "==", transaction.email)
-                                .get();
-
-                            hQuery.docs.forEach(async (d) => {
-                                await d.ref.update({
-                                    paymentStatus: 'paid',
-                                    transactionId: transaction.orderId
-                                });
-                            });
-                        } else {
-                            // Standard Event Handling : Team Creation Logic
-                            const regQuery = await adminDb.collection("events").doc(eventId).collection("registrations")
-                                .where("userId", "==", userId)
-                                .get();
-
-                            for (const docSnapshot of regQuery.docs) {
-                                const regData = docSnapshot.data();
-
-                                // 1. Update Registration Status
-                                await docSnapshot.ref.update({
-                                    paymentStatus: 'success', // Standardized to 'success'
-                                    status: 'active'
-                                });
-
-                                // 2. Team Logic (Strictly for Team Events)
-                                // We check if data implies team logic
-                                const role = regData.role;
-                                const teamName = regData.responses?.teamName;
-                                const targetTeamId = regData.teamId;
-
-                                if (role === 'Leader' && teamName) {
-                                    // A. CREATE TEAM
-                                    // Generate ID: TEAM-XXXX (Match Client Logic aprox)
-                                    const uniqueSuffix = Math.floor(1000 + Math.random() * 9000);
-                                    const finalTeamId = `${teamName.toUpperCase().replace(/\s+/g, '_')}_${uniqueSuffix}`;
-
-                                    // Check if team already exists (Idempotency for careless retries)
-                                    // Though unlikely with random suffix, we just create.
-                                    const newTeamRef = adminDb.collection('teams').doc();
-
-                                    await newTeamRef.set({
-                                        id: newTeamRef.id,
-                                        teamId: finalTeamId,
-                                        eventId: eventId,
-                                        teamName: teamName,
-                                        leaderId: userId,
-                                        leaderName: regData.userSnapshot?.fullName || 'Leader',
-                                        memberIds: [userId],
-                                        members: [{
-                                            userId: userId,
-                                            name: regData.userSnapshot?.fullName || '',
-                                            regNo: regData.userSnapshot?.regNo || ''
-                                        }],
-                                        maxSize: 5, // Default fallback, ideally fetch Event config but costly here.
-                                        status: 'open',
-                                        createdAt: new Date().toISOString() // Admin SDK uses ISO string or Timestamp
-                                    });
-
-                                    // Update Leader's Reg with the generated TeamID
-                                    await docSnapshot.ref.update({ teamId: finalTeamId });
-
-                                } else if (role === 'Member' && targetTeamId) {
-                                    // B. JOIN TEAM
-                                    // Find Team Doc by teamId string
-                                    const teamQuery = await adminDb.collection('teams').where('teamId', '==', targetTeamId).get();
-
-                                    if (!teamQuery.empty) {
-                                        const teamDoc = teamQuery.docs[0];
-                                        const teamData = teamDoc.data();
-
-                                        // Check duplicates
-                                        if (!teamData.memberIds?.includes(userId)) {
-                                            const newMember = {
-                                                userId: userId,
-                                                name: regData.userSnapshot?.fullName || '',
-                                                regNo: regData.userSnapshot?.regNo || ''
-                                            };
-
-                                            // Atomic Add
-                                            // Note: Admin SDK arrayUnion
-                                            const adminLib = require('firebase-admin'); // Determine imports or use generic
-                                            // Assuming firebase-admin is available as we used adminDb
-                                            // But actually I don't have FieldValue imported.
-                                            // I will push to array manually reading current state to avoid import issues if possible, 
-                                            // OR safely assume we can just push since we fetched.
-
-                                            const updatedMemberIds = [...(teamData.memberIds || []), userId];
-                                            const updatedMembers = [...(teamData.members || []), newMember];
-
-                                            await teamDoc.ref.update({
-                                                memberIds: updatedMemberIds,
-                                                members: updatedMembers
-                                            });
-                                        }
-                                    } else {
-                                        console.error(`Callback: Target Team ${targetTeamId} not found for user ${userId}`);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (syncError) {
-                console.error("Failed to sync registration status:", syncError);
-                // We don't fail the callback, just log it. 
-                // Admin might need to reconcile manually if this happens.
-            }
+            // processSuccessfulPayment MUST use `transaction` (Firestore data) for
+            // all privilege decisions (which pass to grant, which eventIds to register).
+            // It must NOT use `paytmResponse` fields for any privilege decision.
+            await processSuccessfulPayment(transaction, {
+                paytmTxnId: txnId ?? null,
+                verifiedStatus,
+                paidAmount: paidAmount ?? null,
+            });
+            return NextResponse.redirect(
+                `${baseUrl}/payment-success?orderId=${ORDERID}${eventIdParam}`,
+                { status: 303 }
+            );
         }
 
-        // 6. Redirect User
-        // Using Absolute URL for redirect safety
-        const baseUrl = new URL(req.url).origin;
-        if (finalStatus === "SUCCESS") {
-            return NextResponse.redirect(`${baseUrl}/payment-success?orderId=${ORDERID}`);
+        if (finalStatus === "PENDING") {
+            console.warn(`[Callback] PENDING payment for ORDERID=${ORDERID}`);
+            await adminDb.collection("payment_issues").add({
+                type: "PENDING_PAYMENT",
+                orderId: ORDERID,
+                userId: transaction.userId ?? null,
+                amount: transaction.amount ?? null,
+                eventIds: transaction.eventIds ?? [],
+                teamId: transaction.teamId ?? null,
+                note: "Payment is in PENDING state. Monitor and reconcile via Paytm dashboard.",
+                createdAt: new Date().toISOString(),
+                resolved: false,
+            });
         } else {
-            return NextResponse.redirect(`${baseUrl}/payment-failed?orderId=${ORDERID}`);
+            // FAILED
+            console.warn(`[Callback] FAILED payment for ORDERID=${ORDERID}`);
+            await adminDb.collection("payment_issues").add({
+                type: "FAILED_PAYMENT",
+                orderId: ORDERID,
+                userId: transaction.userId ?? null,
+                amount: transaction.amount ?? null,
+                eventIds: transaction.eventIds ?? [],
+                teamId: transaction.teamId ?? null,
+                paytmStatus: verifiedStatus,
+                paytmTxnId: txnId ?? null,
+                createdAt: new Date().toISOString(),
+                resolved: false,
+            });
         }
+
+        return NextResponse.redirect(
+            `${baseUrl}/payment-failed?orderId=${ORDERID}${eventIdParam}`,
+            { status: 303 }
+        );
 
     } catch (error: any) {
-        console.error("Callback Error:", error);
-        return NextResponse.json({ error: "Callback processing failed", details: error.message }, { status: 500 });
+        console.error("[Callback] Unhandled error:", error);
+        // Do not return null to the browser (white screen) — properly redirect to failure UI.
+        const originUrl = new URL(req.url).origin;
+        return NextResponse.redirect(
+            `${originUrl}/payment-failed?reason=server_crash`,
+            { status: 303 }
+        );
     }
 }

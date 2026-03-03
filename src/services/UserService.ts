@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { collection, query, where, getDocs, doc, setDoc, writeBatch, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, writeBatch, deleteDoc, updateDoc, serverTimestamp, onSnapshot, QuerySnapshot, Unsubscribe } from 'firebase/firestore';
 import { UserSchema, BulkCreateSchema, type UserProfile, type BulkCreateInput } from '@/lib/schemas/user.schema';
 import { z } from 'zod';
 
@@ -33,6 +33,29 @@ export const UserService = {
             console.error("UserService:getAllUsers", error);
             throw new UserServiceError("Failed to fetch users", "FETCH_ERROR");
         }
+    },
+
+    /**
+     * Subscribe to real-time user updates
+     */
+    subscribeToUsers(callback: (users: UserProfile[]) => void, role?: string): Unsubscribe {
+        const ref = collection(db, 'users');
+        const q = role ? query(ref, where('role', '==', role)) : ref;
+
+        return onSnapshot(q, (snapshot: QuerySnapshot) => {
+            const users = snapshot.docs.map(d => {
+                const data = d.data();
+                return {
+                    ...data,
+                    id: d.id,
+                    uid: d.id,
+                } as unknown as UserProfile;
+            });
+            callback(users);
+        }, (error) => {
+            console.error("UserService:subscribeToUsers", error);
+            // Non-fatal, just log. Callback won't fire.
+        });
     },
 
     /**

@@ -67,7 +67,10 @@ export default function AdminTeamPage() {
         try {
             let url = newMember.imageUrl || '';
             if (imageFile && user) {
-                url = await uploadFile(imageFile, user.uid, newMember.name!, 'team', 'image');
+                // Fix: Append timestamp to ensure unique filename and avoid caching issues
+                const safeName = newMember.name!.replace(/[^a-zA-Z0-9]/g, '_');
+                const fileName = `${safeName}_${Date.now()}`;
+                url = await uploadFile(imageFile, user.uid, fileName, 'team', 'image');
             }
 
             const memberData = {

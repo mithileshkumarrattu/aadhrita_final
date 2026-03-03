@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { db, Event } from '@/lib/db';
-import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, Event, UserRegistration } from '@/lib/db';
+import { doc, getDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '@/contexts/AuthContext';
+import { RegistrationService } from '@/lib/services/registrationService';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { DynamicForm } from '@/components/events/DynamicForm';
@@ -20,7 +21,7 @@ const cinzel = Cinzel({ subsets: ['latin'] });
 export default function EventDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const { user, googleLogin } = useAuth();
+    const { user, userProfile, googleLogin } = useAuth();
     const eventId = params.id as string;
 
     const [event, setEvent] = useState<Event | null>(null);
@@ -55,29 +56,27 @@ export default function EventDetailPage() {
     const handleRegister = async () => {
         if (!user || !event) return;
 
+        // Ensure we have a profile to snapshot
+        if (!userProfile) {
+            toast.error("User profile not loaded. Please try again.");
+            return;
+        }
+
         setRegistering(true);
         try {
-            // 1. Prepare Registration Data
-            const registrationData = {
-                eventId: event.id,
-                userId: user.uid,
-                paymentStatus: event.entryFeeInr > 0 ? 'pending' : 'completed', // MVP Logic
-                status: 'active',
-                userSnapshot: {
-                    fullName: user.displayName || 'Unknown',
-                    email: user.email || 'No Email',
-                    // user.photoURL etc.
-                },
-                responses: formData,
-                createdAt: serverTimestamp()
-            };
-
-            // 2. Save to Firestore
-            await addDoc(collection(db, 'registrations'), registrationData);
+            // Using RegistrationService for consistent Dual-Write (User + Event)
+            await RegistrationService.registerForEvent(
+                user.uid,
+                event.id!,
+                formData,
+                userProfile as unknown as UserRegistration,
+                undefined, // No Payment ID (Direct Registration)
+                { status: event.entryFeeInr > 0 ? 'pending' : 'completed' }
+            );
 
             toast.success("Registration Successful!");
             setDialogOpen(false);
-            // Optionally redirect to a "My Tickets" page
+            // Optionally redirect to a "My Tickets" page or show success state
         } catch (error) {
             console.error(error);
             toast.error("Registration failed. Please try again.");
@@ -194,23 +193,40 @@ export default function EventDetailPage() {
                     {/* Action Button */}
                     <div className="flex justify-center">
                         {/* Action Button */}
+                        {/* Action Button */}
                         <div className="flex justify-center">
-                            {/* Default to open if status is missing or explicitly open */}
-                            {(!event.registrationStatus || event.registrationStatus === 'open') ? (
-                                <Button
-                                    onClick={() => router.push(`/events/${event.id}/register`)}
-                                    className="h-16 px-12 text-xl font-bold bg-gradient-to-r from-red-600 to-red-800 hover:from-red-500 hover:to-red-700 text-white rounded-full shadow-[0_0_40px_rgba(220,38,38,0.4)] transition-all transform hover:scale-105"
-                                >
-                                    Enroll Now
-                                </Button>
-                            ) : (
-                                <Button
-                                    disabled
-                                    className="h-16 px-12 text-xl font-bold bg-neutral-800 text-neutral-500 border border-white/10 rounded-full cursor-not-allowed"
-                                >
-                                    {event.registrationStatus === 'closed' ? 'Registration Closed' : 'Coming Soon'}
-                                </Button>
-                            )}
+                            {(() => {
+                                if (event.registrationMode === 'offline') {
+                                    return (
+                                        <Button
+                                            disabled
+                                            className="h-16 px-12 text-xl font-bold bg-neutral-800 text-neutral-400 border border-white/10 rounded-full cursor-not-allowed"
+                                        >
+                                            Offline Registration Only
+                                        </Button>
+                                    );
+                                }
+
+                                if (event.registrationMode === 'none' || event.isRegistrationOpen === false || event.registrationStatus === 'closed') {
+                                    return (
+                                        <Button
+                                            disabled
+                                            className="h-16 px-12 text-xl font-bold bg-neutral-800 text-neutral-500 border border-white/10 rounded-full cursor-not-allowed"
+                                        >
+                                            {(event.registrationStatus === 'coming_soon') ? 'Coming Soon' : 'Registration Closed'}
+                                        </Button>
+                                    );
+                                }
+
+                                return (
+                                    <Button
+                                        onClick={() => router.push(`/events/${event.id}/register`)}
+                                        className="h-16 px-12 text-xl font-bold bg-gradient-to-r from-red-600 to-red-800 hover:from-red-500 hover:to-red-700 text-white rounded-full shadow-[0_0_40px_rgba(220,38,38,0.4)] transition-all transform hover:scale-105"
+                                    >
+                                        Enroll Now
+                                    </Button>
+                                );
+                            })()}
                         </div>
                     </div>
 

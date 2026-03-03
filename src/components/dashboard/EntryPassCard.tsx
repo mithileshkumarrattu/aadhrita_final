@@ -208,6 +208,18 @@ export function EntryPassCard({ userProfile, events = [], className }: EntryPass
                                 </span>
                                 <span className="text-[9px] font-bold text-green-400 uppercase tracking-wider">Verified Identity</span>
                             </div>
+
+                            {userProfile?.hasReceivedWelcomeKit && (
+                                <div className="mt-3 relative group">
+                                    <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-pulse"></div>
+                                    <div className="relative inline-flex items-center gap-2 px-4 py-1.5 bg-black border border-purple-500/50 rounded-full leading-none">
+                                        <span className="text-xl">🎁</span>
+                                        <span className="text-[10px] font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 uppercase tracking-widest">
+                                            Welcome Kit Received
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Bottom: Registered Events List (Utilizing Space) */}

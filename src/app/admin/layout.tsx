@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
-import { Users, Calendar, Bell, FileText, LayoutDashboard, LogOut, BookOpen, Wallet, Menu as MenuIcon, X, Trophy, Ticket, ClipboardList, Image as ImageIcon } from 'lucide-react';
+import { Users, Calendar, Bell, FileText, LayoutDashboard, LogOut, BookOpen, Wallet, Menu as MenuIcon, X, Trophy, Ticket, ClipboardList, Image as ImageIcon, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -20,17 +20,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     const navItems = [
         { label: 'Overview', path: '/admin', icon: LayoutDashboard },
+        { label: 'Staff Management', path: '/admin/staff', icon: Shield },
         { label: 'Users & Classes', path: '/admin/users', icon: Users },
         { label: 'Wallets', path: '/admin/wallets', icon: Wallet },
-        { label: 'Academic Calendar', path: '/admin/calendar', icon: Calendar },
-        { icon: Bell, label: 'Feed & Notifs', path: '/admin/feed' },
-        { icon: BookOpen, label: 'Upload Notes', path: '/admin/notes' },
-        { icon: Users, label: 'Clubs', path: '/admin/clubs' },
+        { label: 'Entry Passes', path: '/admin/entrypass', icon: Ticket },
         { icon: Trophy, label: 'Hackathon', path: '/admin/hackathon' },
         { icon: Ticket, label: 'Manage Events', path: '/admin/events' },
         { icon: ClipboardList, label: 'All Registrations', path: '/admin/registrations' },
         { icon: ImageIcon, label: 'Carousel Posters', path: '/admin/posters' },
         { icon: FileText, label: 'Home Content', path: '/admin/content' },
+        { icon: ClipboardList, label: 'Categories', path: '/admin/categories' },
         { icon: Users, label: 'Faces of Aadhrita', path: '/admin/team' },
     ];
 

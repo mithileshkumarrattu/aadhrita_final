@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, UploadCloud, ArrowLeft, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { FormFieldConfig } from '@/lib/db';
@@ -111,7 +112,10 @@ export default function EditEventPage() {
 
             if (posterFile && user) {
                 try {
-                    posterUrl = await uploadFile(posterFile, user.uid, formData.title!, 'events', 'image');
+                    // Fix: Append timestamp to ensure unique filename and avoid caching issues
+                    const safeTitle = formData.title!.replace(/[^a-zA-Z0-9]/g, '_');
+                    const fileName = `${safeTitle}_${Date.now()}`;
+                    posterUrl = await uploadFile(posterFile, user.uid, fileName, 'events', 'image');
                 } catch (uploadError) {
                     console.error("Poster upload failed", uploadError);
                     toast.error("Poster upload failed, keeping old one.");
@@ -191,8 +195,14 @@ export default function EditEventPage() {
                                 <div className="space-y-2">
                                     <Label>Category *</Label>
                                     <Select
-                                        value={formData.category}
-                                        onValueChange={(val: any) => setFormData({ ...formData, category: val })}
+                                        value={EVENT_CATEGORIES.some(c => c.label === formData.category) ? formData.category : 'Custom'}
+                                        onValueChange={(val: string) => {
+                                            if (val === 'Custom') {
+                                                setFormData({ ...formData, category: '' }); // Clear for custom entry
+                                            } else {
+                                                setFormData({ ...formData, category: val });
+                                            }
+                                        }}
                                     >
                                         <SelectTrigger className="bg-slate-50 border-slate-200">
                                             <SelectValue />
@@ -203,6 +213,18 @@ export default function EditEventPage() {
                                             ))}
                                         </SelectContent>
                                     </Select>
+
+                                    {/* Custom Category Input */}
+                                    {(!EVENT_CATEGORIES.some(c => c.label === formData.category) || formData.category === '' || formData.category === 'Custom') && (
+                                        <div className="mt-2 animate-in fade-in slide-in-from-top-1">
+                                            <Input
+                                                placeholder="Type Custom Category..."
+                                                value={formData.category === 'Custom' ? '' : formData.category}
+                                                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                                className="bg-white border-slate-300"
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -246,30 +268,186 @@ export default function EditEventPage() {
                             </div>
                         </div>
 
-                        {/* Rules & Constraints */}
+                        {/* 2.5 Resources & Coordinators */}
+                        <div className="space-y-6">
+                            <h2 className="text-lg font-bold border-b pb-2">Resources & Access</h2>
+
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <Label>Rulebook URL (Optional)</Label>
+                                    <Input
+                                        value={formData.rulebookUrl || ''}
+                                        onChange={e => setFormData({ ...formData, rulebookUrl: e.target.value })}
+                                        placeholder="Drive Link / PDF URL"
+                                        className="bg-slate-50 border-slate-200"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Sample PPT URL (Optional)</Label>
+                                    <Input
+                                        value={formData.pptUrl || ''}
+                                        onChange={e => setFormData({ ...formData, pptUrl: e.target.value })}
+                                        placeholder="Template Link"
+                                        className="bg-slate-50 border-slate-200"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <Label>Schedule (Display Text)</Label>
+                                    <Input
+                                        value={formData.schedule || ''}
+                                        onChange={e => setFormData({ ...formData, schedule: e.target.value })}
+                                        placeholder="e.g. 14th Feb, 10:00 AM"
+                                        className="bg-slate-50 border-slate-200"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Venue</Label>
+                                    <Input
+                                        value={formData.venue || ''}
+                                        onChange={e => setFormData({ ...formData, venue: e.target.value })}
+                                        placeholder="e.g. Main Auditorium"
+                                        className="bg-slate-50 border-slate-200"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Event Coordinators (Emails)</Label>
+                                <Input
+                                    placeholder="student1@mvgr.edu, faculty@mvgr.edu"
+                                    value={formData.coordinators?.join(', ') || ''}
+                                    onChange={e => setFormData({ ...formData, coordinators: e.target.value.split(',').map(s => s.trim()) })}
+                                    className="bg-slate-50 border-slate-200"
+                                />
+                                <p className="text-xs text-slate-400">Comma-separated emails.</p>
+                            </div>
+                        </div>
+
+                        {/* Logistics & Registration */}
+                        <div className="space-y-6">
+                            <h2 className="text-lg font-bold border-b pb-2">Logistics & Registration</h2>
+
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <Label>Date</Label>
+                                    <Input
+                                        type="date"
+                                        value={formData.date || ''}
+                                        onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                        className="bg-slate-50 border-slate-200"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Time</Label>
+                                    <Input
+                                        type="time"
+                                        value={formData.time || ''}
+                                        onChange={e => setFormData({ ...formData, time: e.target.value })}
+                                        className="bg-slate-50 border-slate-200"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-6 items-center">
+                                <div className="space-y-2">
+                                    <Label>Registration Mode</Label>
+                                    <Select
+                                        value={formData.registrationMode || 'online'}
+                                        onValueChange={(val: any) => setFormData({ ...formData, registrationMode: val })}
+                                    >
+                                        <SelectTrigger className="bg-slate-50 border-slate-200">
+                                            <SelectValue placeholder="Select Mode" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="online">Online Registration</SelectItem>
+                                            <SelectItem value="offline">Offline Only (Spot)</SelectItem>
+                                            <SelectItem value="none">Closed / Info Only</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="flex items-center space-x-2 border p-3 rounded-lg bg-white h-full mt-6">
+                                    <input
+                                        type="checkbox"
+                                        id="isOpen"
+                                        checked={formData.isRegistrationOpen !== false} // Default true
+                                        onChange={(e) => setFormData({ ...formData, isRegistrationOpen: e.target.checked })}
+                                        className="accent-slate-900 w-5 h-5 cursor-pointer"
+                                    />
+                                    <Label htmlFor="isOpen" className="text-slate-700 font-semibold cursor-pointer select-none">
+                                        Registration Open?
+                                    </Label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Rules & Fees */}
                         <div className="space-y-6">
                             <h2 className="text-lg font-bold border-b pb-2">Rules & Fees</h2>
-                            <div className="grid md:grid-cols-4 gap-6">
-                                <div className="space-y-2">
-                                    <Label>Min Team Size</Label>
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        value={formData.minTeamSize}
-                                        onChange={e => setFormData({ ...formData, minTeamSize: parseInt(e.target.value) || 1 })}
-                                        className="bg-slate-50"
+
+                            <div className="border p-6 rounded-xl bg-slate-50 space-y-4">
+                                <div className="flex items-center space-x-3">
+                                    <Checkbox
+                                        id="isTeamEvent"
+                                        checked={(formData.maxTeamSize || 1) > 1 || formData.formConfig?.askTeamName}
+                                        onCheckedChange={(checked: boolean) => {
+                                            if (checked) {
+                                                setFormData({
+                                                    ...formData,
+                                                    minTeamSize: 1,
+                                                    maxTeamSize: 4,
+                                                    formConfig: { ...formData.formConfig!, askTeamName: true }
+                                                });
+                                            } else {
+                                                setFormData({
+                                                    ...formData,
+                                                    minTeamSize: 1,
+                                                    maxTeamSize: 1,
+                                                    formConfig: { ...formData.formConfig!, askTeamName: false }
+                                                });
+                                            }
+                                        }}
+                                        className="w-5 h-5 border-slate-400 data-[state=checked]:bg-slate-900 data-[state=checked]:border-slate-900"
                                     />
+                                    <div>
+                                        <Label htmlFor="isTeamEvent" className="text-slate-900 font-bold text-base cursor-pointer">
+                                            Enable Team Registration?
+                                        </Label>
+                                        <p className="text-slate-500 text-sm">Check this if multiple students participate as a group.</p>
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label>Max Team Size</Label>
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        value={formData.maxTeamSize}
-                                        onChange={e => setFormData({ ...formData, maxTeamSize: parseInt(e.target.value) || 1 })}
-                                        className="bg-slate-50"
-                                    />
-                                </div>
+
+                                {/* Conditionally Render Team Inputs */}
+                                {(formData.formConfig?.askTeamName || (formData.maxTeamSize || 1) > 1) && (
+                                    <div className="grid grid-cols-2 gap-4 pl-8 animate-in slide-in-from-top-2">
+                                        <div className="space-y-2">
+                                            <Label className="text-slate-600 font-semibold">Min Members</Label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                className="bg-white border-slate-300"
+                                                value={formData.minTeamSize}
+                                                onChange={e => setFormData({ ...formData, minTeamSize: parseInt(e.target.value) || 1 })}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-slate-600 font-semibold">Max Members</Label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                className="bg-white border-slate-300"
+                                                value={formData.maxTeamSize}
+                                                onChange={e => setFormData({ ...formData, maxTeamSize: parseInt(e.target.value) || 1 })}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <Label>Entry Fee (₹)</Label>
                                     <Input
@@ -287,27 +465,6 @@ export default function EditEventPage() {
                                         min={0}
                                         value={formData.entryFeeAft}
                                         onChange={e => setFormData({ ...formData, entryFeeAft: parseInt(e.target.value) || 0 })}
-                                        className="bg-slate-50"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <Label>Rulebook URL (Optional)</Label>
-                                    <Input
-                                        value={formData.rulebookUrl || ''}
-                                        onChange={e => setFormData({ ...formData, rulebookUrl: e.target.value })}
-                                        placeholder="Drive Link / PDF URL"
-                                        className="bg-slate-50"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Sample PPT URL (Optional)</Label>
-                                    <Input
-                                        value={formData.pptUrl || ''}
-                                        onChange={e => setFormData({ ...formData, pptUrl: e.target.value })}
-                                        placeholder="Template Link"
                                         className="bg-slate-50"
                                     />
                                 </div>
@@ -353,10 +510,10 @@ export default function EditEventPage() {
                                 <RoyalFormBuilder
                                     fields={formData.formConfig?.customFields || []}
                                     onChange={(newFields: FormFieldConfig[]) =>
-                                        setFormData({
-                                            ...formData,
-                                            formConfig: { ...formData.formConfig!, customFields: newFields }
-                                        })
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            formConfig: { ...prev.formConfig!, customFields: newFields }
+                                        }))
                                     }
                                 />
                             </div>

@@ -3,7 +3,7 @@ import { z } from 'zod';
 const FormFieldConfigSchema = z.object({
     id: z.string().min(1),
     label: z.string().min(1),
-    type: z.enum(['text', 'file', 'select', 'textarea', 'number']),
+    type: z.enum(['text', 'file', 'select', 'textarea', 'number', 'info', 'checkbox']),
     options: z.array(z.string()).optional(),
     required: z.boolean().default(false),
     placeholder: z.string().optional()
@@ -23,9 +23,7 @@ export const EventSchema = z.object({
     id: z.string().optional(),
     title: z.string().min(3, "Title must be at least 3 characters"),
     description: z.string().min(10, "Description must be at least 10 characters"),
-    category: z.enum([
-        'Flagship', 'Tech Frontier', 'Skill Forge', 'Brainwave', 'Cultural', 'Sports', 'Spot'
-    ]),
+    category: z.string().min(1, "Category is required"),
     imagePosterUrl: z.string().url("Invalid Poster URL").optional().or(z.literal('')),
 
     // Economics

@@ -38,74 +38,82 @@ import VideoCarousel from '@/components/VideoCarousel';
 
 export default function DashboardPage() {
     const router = useRouter();
-    const { userProfile } = useAuth(); // Removed logout unused
+    const { userProfile, loading: authLoading, profileLoading } = useAuth();
 
     // Dynamic Stats State
     const [notifCount, setNotifCount] = React.useState(0);
     const [upcomingEvents, setUpcomingEvents] = React.useState<any[]>([]);
     const [myEvents, setMyEvents] = React.useState<any[]>([]);
-    const [allEvents, setAllEvents] = React.useState<any[]>([]); // Added allEvents state
-    const [loading, setLoading] = React.useState(true);
+    const [allEvents, setAllEvents] = React.useState<any[]>([]);
+    const [myRegistrations, setMyRegistrations] = React.useState<Record<string, any>>({});
+    const [dataLoading, setDataLoading] = React.useState(false);
 
+    // accessDenied must wait for BOTH auth AND the Firestore profile to load.
+    // Previously: authLoading=false could happen before userProfile arrives (profileLoading still true)
+    // which caused a flash of "Access Restricted" for valid users.
+    const accessDenied = React.useMemo(() => {
+        console.log('[Dashboard] authLoading:', authLoading, 'profileLoading:', profileLoading, 'hasEntryPass:', userProfile?.hasEntryPass, 'role:', userProfile?.role);
+        if (authLoading || profileLoading) return false; // Still loading — not denied yet
+        if (!userProfile) return true;                   // Logged-out user
+        if (userProfile.hasEntryPass) return false;      // Paid user → allow
+        if (userProfile.role === 'admin') return false;  // Admin → always allow
+        return true;                                     // No pass & not admin → denied
+    }, [userProfile, authLoading, profileLoading]);
+
+    // Fetch dashboard data only if access is granted
     React.useEffect(() => {
         const fetchDashboardData = async () => {
-            if (userProfile?.uid) {
-                try {
-                    const notifs = await getUnreadNotificationsCount(userProfile.uid);
-                    setNotifCount(notifs);
+            // Only fetch if we have valid access
+            if (!userProfile?.uid || accessDenied || authLoading) {
+                return;
+            }
 
-                    // Fetch Events & Registrations
-                    // Fetch ALL events for Explore section (removed semester filter to show all)
-                    const events = await getEvents('2024-01');
-                    setAllEvents(events); // Save all events for exploration
-                    const allRegistrations = await getUserEventRegistrations(userProfile.uid);
+            setDataLoading(true);
+            try {
+                // Run all three fetches in parallel — cut total wait from sum to max
+                const [notifs, eventsRaw, allRegistrations] = await Promise.all([
+                    getUnreadNotificationsCount(userProfile.uid).catch(() => 0),
+                    getEvents('2024-01').catch(() => []),
+                    getUserEventRegistrations(userProfile.uid).catch((err) => {
+                        console.warn('Dashboard: Failed to load dynamic event registrations (missing index?). Falling back to static profile data.', err);
+                        return [];
+                    }),
+                ]);
 
-                    // Match Registrations to Events
-                    // Match Registrations to Events (Deduplicated Source of Truth)
-                    const registeredEventIds = new Set(allRegistrations.map((r: any) => r.eventId));
-                    const uniqueEvents = events.filter((e: any) => registeredEventIds.has(e.id));
+                setNotifCount(notifs);
 
-                    setMyEvents(uniqueEvents);
+                const events = eventsRaw.filter((e: any) => e.id !== 'hackathon');
+                setAllEvents(events);
 
-                    // Filter for upcoming generic (non-registered?) or just keep as is
-                    const futureEvents = events.filter((e: any) => new Date(e.date) >= new Date()).slice(0, 3);
-                    setUpcomingEvents(futureEvents);
+                let registeredIds = new Set<string>();
+                const regMap: Record<string, any> = {};
 
-                } catch (e) {
-                    console.error("Dashboard data fetch failed", e);
-                } finally {
-                    setLoading(false);
+                if (userProfile.registeredEventIds && Array.isArray(userProfile.registeredEventIds)) {
+                    userProfile.registeredEventIds.forEach(id => registeredIds.add(id));
                 }
-            } else {
-                setLoading(false);
+
+                // Always fetch registrations to get fresh team IDs
+                allRegistrations.forEach((r: any) => {
+                    registeredIds.add(r.eventId);
+                    regMap[r.eventId] = r;
+                });
+
+                setMyRegistrations(regMap);
+
+                const uniqueEvents = events.filter((e: any) => registeredIds.has(e.id));
+                setMyEvents(uniqueEvents);
+
+                const futureEvents = events.filter((e: any) => new Date(e.date) >= new Date()).slice(0, 3);
+                setUpcomingEvents(futureEvents);
+
+            } catch (e) {
+                console.error("Dashboard data fetch failed", e);
+            } finally {
+                setDataLoading(false);
             }
         };
         fetchDashboardData();
-    }, [userProfile]);
-
-    // --- SELF-HEARING: Legacy User Sync ---
-    React.useEffect(() => {
-        const syncLegacyUser = async () => {
-            if (userProfile?.uid && userProfile.hasEntryPass === undefined) {
-                // Check if they actually have a registration
-                // We check the root 'registrations' collection for their ID
-                const regDocRef = await import('firebase/firestore').then(mod => mod.doc(db, 'registrations', userProfile.uid));
-                const regSnap = await import('firebase/firestore').then(mod => mod.getDoc(regDocRef));
-
-                if (regSnap.exists() && regSnap.data().paymentStatus === 'paid') {
-                    console.log("Syncing legacy user: Found valid pass, updating profile...");
-                    await import('firebase/firestore').then(mod => mod.updateDoc(mod.doc(db, 'users', userProfile.uid), {
-                        hasEntryPass: true,
-                        // Sync other fields if needed
-                        idCardUrl: regSnap.data().responses?.idCardUrl || userProfile.idCardUrl
-                    }));
-                    // Force reload or let next refresh handle it
-                    window.location.reload();
-                }
-            }
-        };
-        syncLegacyUser();
-    }, [userProfile]);
+    }, [userProfile, accessDenied, authLoading]);
 
     const getGreeting = () => {
         const hour = new Date().getHours();
@@ -113,6 +121,7 @@ export default function DashboardPage() {
         if (hour < 18) return 'Good Afternoon';
         return 'Good Evening';
     }
+
 
     const categorizedEvents = React.useMemo(() => {
         // Group available events (not registered) by category
@@ -127,6 +136,58 @@ export default function DashboardPage() {
 
         return categories;
     }, [allEvents, myEvents]);
+
+    // Show spinner while auth OR profile is loading
+    if (authLoading || profileLoading) {
+        return (
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <Loader2 className="w-8 h-8 text-yellow-500 animate-spin" />
+            </div>
+        );
+    }
+
+    // Show Access Denied IMMEDIATELY after verification (don't wait for data loading)
+    if (accessDenied) {
+        return (
+            <div className="min-h-screen w-full flex flex-col items-center justify-center bg-black gap-6 p-4">
+                <div className="bg-gradient-to-br from-neutral-900 to-black p-8 rounded-3xl border border-white/10 shadow-2xl max-w-md w-full text-center space-y-6">
+                    <div className="w-20 h-20 bg-red-900/20 rounded-full flex items-center justify-center mx-auto border border-red-500/30 shadow-[0_0_30px_rgba(220,38,38,0.2)]">
+                        <Shield className="w-10 h-10 text-red-500" />
+                    </div>
+                    <div>
+                        <h2 className={cn("text-2xl font-bold text-white mb-2", cinzel.className)}>Access Restricted</h2>
+                        <p className="text-neutral-400">You need an active Entry Pass to access the dashboard.</p>
+                    </div>
+                    <div className="pt-4 flex flex-col gap-3">
+                        <Button
+                            onClick={() => router.push('/register/onboarding')}
+                            className="w-full h-12 text-lg font-bold bg-white text-black hover:bg-neutral-200 transition-all rounded-xl"
+                        >
+                            Get Entry Pass <ChevronRight className="w-5 h-5 ml-2" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            onClick={() => router.push('/')}
+                            className="text-neutral-500 hover:text-white"
+                        >
+                            Back to Home
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Only show loading spinner for dashboard data if access is granted
+    if (dataLoading) {
+        return (
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <Loader2 className="w-8 h-8 text-yellow-500 animate-spin" />
+            </div>
+        );
+    }
+
+
 
     // Role-based Tools
     const tools = [
@@ -200,7 +261,7 @@ export default function DashboardPage() {
                             {myEvents.map((evt) => (
                                 <div
                                     key={evt.id}
-                                    onClick={() => router.push(`/events/${evt.id}`)}
+                                    onClick={() => router.push(`/dashboard/event/${evt.id}`)}
                                     className="group relative overflow-hidden bg-neutral-900 border border-neutral-800 rounded-2xl p-4 transition-all hover:border-yellow-500/50 hover:shadow-[0_0_20px_rgba(234,179,8,0.1)] active:scale-[0.98] cursor-pointer"
                                 >
                                     <div className="flex items-center gap-4">
@@ -225,9 +286,27 @@ export default function DashboardPage() {
                                                     PAID
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-3 text-[10px] text-neutral-400 font-medium">
-                                                <div className="flex items-center gap-1"><CalendarClock className="w-3 h-3" /> {evt.schedule || 'TBA'}</div>
-                                                {evt.venue && <div className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {evt.venue}</div>}
+                                            <div className="flex flex-col gap-1.5 mt-1">
+                                                <div className="flex items-center gap-3 text-[10px] text-neutral-400 font-medium">
+                                                    <div className="flex items-center gap-1"><CalendarClock className="w-3 h-3" /> {evt.schedule || 'TBA'}</div>
+                                                    {evt.venue && <div className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {evt.venue}</div>}
+                                                </div>
+
+                                                {/* Team Details (If group event) */}
+                                                {(myRegistrations[evt.id]?.teamId || myRegistrations[evt.id]?.responses?.teamName) && (
+                                                    <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                                                        {myRegistrations[evt.id]?.teamId && (
+                                                            <div className="flex items-center gap-1.5 bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded-md text-[10px] font-bold tracking-widest shrink-0">
+                                                                <Users className="w-3 h-3" /> {myRegistrations[evt.id].teamId}
+                                                            </div>
+                                                        )}
+                                                        {(myRegistrations[evt.id]?.teamName || myRegistrations[evt.id]?.responses?.teamName) && (
+                                                            <span className="text-purple-300 font-bold text-[10px] uppercase line-clamp-1 border-l border-purple-500/30 pl-2">
+                                                                {myRegistrations[evt.id].teamName || myRegistrations[evt.id].responses.teamName}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -288,7 +367,7 @@ export default function DashboardPage() {
                         </div>
                     ))}
 
-                    {allEvents.length === 0 && !loading && (
+                    {allEvents.length === 0 && !dataLoading && (
                         <div className="text-center py-12">
                             <Loader2 className="w-8 h-8 text-yellow-500 animate-spin mx-auto" />
                             <p className="text-neutral-500 mt-2">Loading events...</p>

@@ -1,27 +1,49 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebase-admin';
 
 export async function GET(request: Request) {
     try {
-        // Query users
-        const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-        const snapshot = await getDocs(q);
+        const { searchParams } = new URL(request.url);
+        const type = searchParams.get('type') || 'users';
 
-        const users = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                email: data.email,
-                fullName: data.fullName,
-                role: data.role || 'student',
-                registrationNumber: data.registrationNumber,
-                walletAddress: data.walletAddress || null,
-                walletCreatedAt: data.walletCreatedAt?.toDate().toISOString() || null,
-                // We don't fetch balances here to avoid spamming RPC. 
-                // Balances can be fetched on demand or client side component.
-            };
-        });
+        let users = [];
+
+        if (type === 'staff') {
+            const snapshot = await adminDb.collection('staff_credentials')
+                .orderBy('createdAt', 'desc')
+                .get();
+
+            users = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    email: data.email || data.username,
+                    fullName: data.name || data.fullName || 'Staff Member',
+                    role: data.role || 'coordinator',
+                    registrationNumber: 'STAFF',
+                    walletAddress: data.walletAddress || null,
+                    walletCreatedAt: data.walletCreatedAt?.toDate?.().toISOString() || null,
+                };
+            });
+        } else {
+            // Default: Users
+            const snapshot = await adminDb.collection('users')
+                .orderBy('createdAt', 'desc')
+                .get();
+
+            users = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    email: data.email,
+                    fullName: data.fullName,
+                    role: data.role || 'student',
+                    registrationNumber: data.registrationNumber,
+                    walletAddress: data.walletAddress || null,
+                    walletCreatedAt: data.walletCreatedAt?.toDate?.().toISOString() || null,
+                };
+            });
+        }
 
         return NextResponse.json({ success: true, users });
     } catch (error: any) {

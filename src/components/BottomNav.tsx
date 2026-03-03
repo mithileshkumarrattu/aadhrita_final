@@ -9,14 +9,17 @@ import { cn } from '@/lib/utils';
 export default function BottomNav() {
     const router = useRouter();
     const pathname = usePathname();
-
-    // New Requirement: Remove BottomNav on Event Pages
-    if (pathname.startsWith('/events')) return null;
-
     const { user } = useAuth();
 
-    // Hide on login page, admin pages, or registration pages, and public about pages
-    if (!user || pathname === '/' || pathname?.startsWith('/admin') || pathname?.startsWith('/register') || pathname?.startsWith('/enrollment') || pathname === '/about' || pathname === '/team') return null;
+    // ALLOWLIST: Only show on specific main pages
+    // Explicitly excluded from: /, /admin, /faculty, /security, /events, /register
+    const allowedPaths = ['/dashboard', '/pay', '/aft'];
+    // Exclude admin-facing pages under /dashboard that shouldn't show the user nav
+    const excludedPaths = ['/dashboard/entrypass'];
+    const isAllowed = allowedPaths.some(path => pathname === path || pathname?.startsWith(path + '/'));
+    const isExcluded = excludedPaths.some(path => pathname === path || pathname?.startsWith(path + '/'));
+
+    if (!user || !isAllowed || isExcluded) return null;
 
     const navItems = [
         { label: 'Home', path: '/dashboard', icon: Home },

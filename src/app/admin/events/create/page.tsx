@@ -133,8 +133,14 @@ export default function CreateEventPage() {
                                 <div className="space-y-2">
                                     <Label className="text-slate-600 font-semibold">Category <span className="text-red-500">*</span></Label>
                                     <Select
-                                        value={formData.category}
-                                        onValueChange={(val: any) => setFormData({ ...formData, category: val })}
+                                        value={EVENT_CATEGORIES.some(c => c.label === formData.category) ? formData.category : 'Custom'}
+                                        onValueChange={(val: string) => {
+                                            if (val === 'Custom') {
+                                                setFormData({ ...formData, category: '' }); // Clear to let user type
+                                            } else {
+                                                setFormData({ ...formData, category: val });
+                                            }
+                                        }}
                                     >
                                         <SelectTrigger className="bg-slate-50 border-slate-200">
                                             <SelectValue placeholder="Select Category" />
@@ -145,6 +151,18 @@ export default function CreateEventPage() {
                                             ))}
                                         </SelectContent>
                                     </Select>
+
+                                    {/* Custom Category Input */}
+                                    {(!EVENT_CATEGORIES.some(c => c.label === formData.category) || formData.category === '') && (
+                                        <div className="mt-2 animate-in fade-in slide-in-from-top-1">
+                                            <Input
+                                                placeholder="Type Custom Category..."
+                                                value={formData.category}
+                                                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                                className="bg-white border-slate-300"
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -171,7 +189,7 @@ export default function CreateEventPage() {
                             </div>
                         </div>
 
-                        {/* 2. Fees */}
+                        {/* 2. Fees & Team Config */}
                         <div className="space-y-6">
                             <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
                                 <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide">Step 2</span>
@@ -206,52 +224,66 @@ export default function CreateEventPage() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-4">
-                                        <div className="flex items-center space-x-2 border p-3 rounded-lg bg-white">
-                                            <Checkbox
-                                                id="isTeamEvent"
-                                                checked={formData.minTeamSize! > 1 || formData.maxTeamSize! > 1}
-                                                onCheckedChange={(checked) => {
-                                                    if (checked) {
-                                                        setFormData({ ...formData, minTeamSize: 2, maxTeamSize: 4 });
-                                                    } else {
-                                                        setFormData({ ...formData, minTeamSize: 1, maxTeamSize: 1 });
-                                                    }
-                                                }}
-                                            />
-                                            <Label htmlFor="isTeamEvent" className="text-slate-700 font-semibold cursor-pointer">
-                                                Is this a Team Event?
-                                            </Label>
-                                        </div>
 
-                                        {(formData.minTeamSize! > 1 || formData.maxTeamSize! > 1) && (
-                                            <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-2">
-                                                <div className="space-y-2">
-                                                    <Label className="text-slate-600 font-semibold">Min Members</Label>
-                                                    <Input
-                                                        type="number"
-                                                        min={1}
-                                                        className="bg-slate-50 border-slate-200"
-                                                        value={formData.minTeamSize}
-                                                        onChange={e => setFormData({ ...formData, minTeamSize: parseInt(e.target.value) || 1 })}
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label className="text-slate-600 font-semibold">Max Members</Label>
-                                                    <Input
-                                                        type="number"
-                                                        min={1}
-                                                        className="bg-slate-50 border-slate-200"
-                                                        value={formData.maxTeamSize}
-                                                        onChange={e => setFormData({ ...formData, maxTeamSize: parseInt(e.target.value) || 1 })}
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
+                            <div className="border p-6 rounded-xl bg-slate-50 space-y-4">
+                                <div className="flex items-center space-x-3">
+                                    <Checkbox
+                                        id="isTeamEvent"
+                                        checked={(formData.maxTeamSize || 1) > 1 || formData.formConfig?.askTeamName}
+                                        onCheckedChange={(checked) => {
+                                            if (checked) {
+                                                // Switch to TEAM mode - Allow 1 but enable Team Name
+                                                setFormData({
+                                                    ...formData,
+                                                    minTeamSize: 1,
+                                                    maxTeamSize: 4,
+                                                    formConfig: { ...formData.formConfig!, askTeamName: true }
+                                                });
+                                            } else {
+                                                // Switch to SOLO mode
+                                                setFormData({
+                                                    ...formData,
+                                                    minTeamSize: 1,
+                                                    maxTeamSize: 1,
+                                                    formConfig: { ...formData.formConfig!, askTeamName: false }
+                                                });
+                                            }
+                                        }}
+                                        className="w-5 h-5 border-slate-400 data-[state=checked]:bg-slate-900 data-[state=checked]:border-slate-900"
+                                    />
+                                    <div>
+                                        <Label htmlFor="isTeamEvent" className="text-slate-900 font-bold text-base cursor-pointer">
+                                            Enable Team Registration?
+                                        </Label>
+                                        <p className="text-slate-500 text-sm">Check this if participants register as a named team.</p>
                                     </div>
                                 </div>
+
+                                {/* Always Render Team Inputs if Checked, regardless of current values */}
+                                {(formData.formConfig?.askTeamName || (formData.maxTeamSize || 1) > 1) && (
+                                    <div className="grid grid-cols-2 gap-4 pl-8 animate-in slide-in-from-top-2">
+                                        <div className="space-y-2">
+                                            <Label className="text-slate-600 font-semibold">Min Members</Label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                className="bg-white border-slate-300"
+                                                value={formData.minTeamSize}
+                                                onChange={e => setFormData({ ...formData, minTeamSize: parseInt(e.target.value) || 1 })}
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-slate-600 font-semibold">Max Members</Label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                className="bg-white border-slate-300"
+                                                value={formData.maxTeamSize}
+                                                onChange={e => setFormData({ ...formData, maxTeamSize: parseInt(e.target.value) || 1 })}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -321,6 +353,65 @@ export default function CreateEventPage() {
                             </div>
                         </div>
 
+                        {/* 2.6 Logistics & Registration Control */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                                <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-md uppercase tracking-wide">Step 2.6</span>
+                                <h3 className="text-lg font-bold text-slate-800">Logistics & Registration</h3>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <Label className="text-slate-600 font-semibold">Date</Label>
+                                    <Input
+                                        type="date"
+                                        value={formData.date || ''}
+                                        onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                        className="bg-slate-50 border-slate-200"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-slate-600 font-semibold">Time</Label>
+                                    <Input
+                                        type="time"
+                                        value={formData.time || ''}
+                                        onChange={e => setFormData({ ...formData, time: e.target.value })}
+                                        className="bg-slate-50 border-slate-200"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-6 items-center">
+                                <div className="space-y-2">
+                                    <Label className="text-slate-600 font-semibold">Registration Mode</Label>
+                                    <Select
+                                        value={formData.registrationMode || 'online'}
+                                        onValueChange={(val: any) => setFormData({ ...formData, registrationMode: val })}
+                                    >
+                                        <SelectTrigger className="bg-slate-50 border-slate-200">
+                                            <SelectValue placeholder="Select Mode" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="online">Online Registration</SelectItem>
+                                            <SelectItem value="offline">Offline Only (Spot)</SelectItem>
+                                            <SelectItem value="none">Closed / Info Only</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="flex items-center space-x-2 border p-3 rounded-lg bg-white h-full mt-6">
+                                    <Checkbox
+                                        id="isOpen"
+                                        checked={formData.isRegistrationOpen !== false} // Default true
+                                        onCheckedChange={(c) => setFormData({ ...formData, isRegistrationOpen: c === true })}
+                                    />
+                                    <Label htmlFor="isOpen" className="text-slate-700 font-semibold cursor-pointer">
+                                        Registration Open?
+                                    </Label>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* 3. Form Config */}
                         <div className="space-y-6">
                             <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
@@ -372,9 +463,10 @@ export default function CreateEventPage() {
                                 Create Event
                             </Button>
                         </div>
+
                     </form>
-                </div>
-            </div>
-        </div>
+                </div >
+            </div >
+        </div >
     );
 }

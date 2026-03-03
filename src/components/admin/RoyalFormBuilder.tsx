@@ -203,6 +203,7 @@ function FieldConfigurator({ field, onUpdate, onClose }: {
                         value={field.label}
                         onChange={(e) => onUpdate({ ...field, label: e.target.value })}
                         className="bg-white/5 border-white/10 text-white focus:border-[#D4AF37]/50"
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                     />
                 </div>
 
@@ -266,6 +267,7 @@ function FieldConfigurator({ field, onUpdate, onClose }: {
                             value={field.placeholder || ''}
                             onChange={(e) => onUpdate({ ...field, placeholder: e.target.value })}
                             className="bg-white/5 border-white/10 text-white focus:border-[#D4AF37]/50"
+                            onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                             placeholder="e.g. Enter your full name"
                         />
                     )}
@@ -281,6 +283,8 @@ function FieldConfigurator({ field, onUpdate, onClose }: {
                             rows={5}
                             value={optionsStr}
                             onChange={(e) => handleOptionsUpdate(e.target.value)}
+                            // Prevent Enter from bubbling up to the main form
+                            onKeyDown={(e) => e.stopPropagation()}
                             className="w-full bg-white/5 border border-white/10 text-white font-mono text-sm focus:border-[#D4AF37]/50 rounded-md p-2 focus:outline-none focus:ring-1 focus:ring-[#D4AF37]/50"
                             placeholder={"Option 1\nOption 2\nOption 3"}
                         />

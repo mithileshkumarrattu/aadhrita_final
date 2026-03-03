@@ -10,9 +10,10 @@ import QRCode from "react-qr-code";
 
 interface CustodialWalletProps {
     hidePayButton?: boolean;
+    overrideUserId?: string;
 }
 
-export function CustodialWallet({ hidePayButton = false }: CustodialWalletProps) {
+export function CustodialWallet({ hidePayButton = false, overrideUserId }: CustodialWalletProps) {
     const { user } = useAuth();
     const router = useRouter();
     const [balance, setBalance] = React.useState('0');
@@ -20,23 +21,42 @@ export function CustodialWallet({ hidePayButton = false }: CustodialWalletProps)
     const [loading, setLoading] = React.useState(true);
     const [copied, setCopied] = React.useState(false);
     const [showQr, setShowQr] = React.useState(false);
+    const [creationAttempted, setCreationAttempted] = React.useState(false);
 
     const fetchWallet = React.useCallback(async () => {
-        if (!user) return;
+        const targetId = overrideUserId || user?.uid;
+        if (!targetId) return;
+
         setLoading(true);
         try {
-            const res = await fetch(`/api/wallet/balance?userId=${user.uid}`);
+            const res = await fetch(`/api/wallet/balance?userId=${targetId}`);
             const data = await res.json();
             if (data.exists) {
                 setAddress(data.address);
                 setBalance(parseFloat(data.balance).toFixed(2));
+            } else if (user && user.email && !creationAttempted) {
+                setCreationAttempted(true);
+                try {
+                    await fetch('/api/wallet/create', {
+                        method: 'POST',
+                        body: JSON.stringify({ userId: targetId, email: user.email }),
+                    });
+                    const retryRes = await fetch(`/api/wallet/balance?userId=${targetId}`);
+                    const retryData = await retryRes.json();
+                    if (retryData.exists) {
+                        setAddress(retryData.address);
+                        setBalance(parseFloat(retryData.balance).toFixed(2));
+                    }
+                } catch (createErr) {
+                    console.error("Auto-creation failed", createErr);
+                }
             }
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, overrideUserId, creationAttempted]);
 
     React.useEffect(() => {
         fetchWallet();

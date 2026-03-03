@@ -51,8 +51,49 @@ export default function CoordinatorEventDetailsPage() {
             const q = query(regsRef, orderBy('createdAt', 'desc'));
             const regsSnap = await getDocs(q);
 
-            const regs = regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as EventRegistration));
-            setRegistrations(regs);
+            const rawRegs = regsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as EventRegistration));
+
+            // Optimization: Fetch User Profiles if snapshot is missing
+            // 1. Collect IDs needing fetch
+            const userIdsToFetch = new Set<string>();
+            rawRegs.forEach(r => {
+                if (!r.userSnapshot) userIdsToFetch.add(r.userId);
+            });
+
+            const userProfiles: Record<string, any> = {};
+
+            // 2. Batch Fetch
+            const idsArray = Array.from(userIdsToFetch);
+            if (idsArray.length > 0) {
+                const chunkArray = (arr: any[], size: number) => {
+                    const chunks = [];
+                    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+                    return chunks;
+                };
+
+                const chunks = chunkArray(idsArray, 10);
+                const { documentId, where } = await import('firebase/firestore');
+
+                await Promise.all(chunks.map(async (chunk) => {
+                    const usersQ = query(collection(db, 'users'), where(documentId(), 'in', chunk));
+                    const snaps = await getDocs(usersQ);
+                    snaps.forEach(d => userProfiles[d.id] = d.data());
+                }));
+            }
+
+            // 3. Merge
+            const enrichedRegs = rawRegs.map(r => {
+                if (!r.userSnapshot && userProfiles[r.userId]) {
+                    // Polyfill snapshot for display compatibility
+                    return {
+                        ...r,
+                        userSnapshot: userProfiles[r.userId]
+                    } as EventRegistration;
+                }
+                return r;
+            });
+
+            setRegistrations(enrichedRegs);
 
         } catch (error) {
             console.error("Error fetching coordinator data", error);
@@ -91,13 +132,13 @@ export default function CoordinatorEventDetailsPage() {
 
             return [
                 reg.id,
-                u.fullName,
-                u.email,
-                u.mobileNumber,
-                u.collegeName,
+                u?.fullName || 'Unknown',
+                u?.email || 'N/A',
+                u?.mobileNumber || 'N/A',
+                u?.collegeName || 'N/A',
                 // Access dynamic snapshot fields safely
-                (u as any).yearOfStudy || '',
-                (u as any).degreeBranch || '',
+                (u as any)?.yearOfStudy || '',
+                (u as any)?.degreeBranch || '',
                 reg.paymentStatus,
                 r.teamName || '',
                 r.pptUrl || '',
@@ -178,18 +219,18 @@ export default function CoordinatorEventDetailsPage() {
                                 registrations.map(reg => (
                                     <tr key={reg.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-6 py-4">
-                                            <div className="font-bold text-slate-900">{reg.userSnapshot.fullName}</div>
+                                            <div className="font-bold text-slate-900">{reg.userSnapshot?.fullName || 'Unknown'}</div>
                                             <div className="text-xs text-slate-400 font-mono mt-0.5" title={reg.id}>{reg.id?.slice(0, 8)}...</div>
                                         </td>
                                         <td className="px-6 py-4 text-slate-600">
-                                            <div>{reg.userSnapshot.collegeName}</div>
+                                            <div>{reg.userSnapshot?.collegeName || 'N/A'}</div>
                                             <div className="text-xs text-slate-400 mt-0.5">
-                                                {(reg.userSnapshot as any).yearOfStudy ? `${(reg.userSnapshot as any).yearOfStudy} Year` : 'N/A'} • {(reg.userSnapshot as any).degreeBranch || 'N/A'}
+                                                {(reg.userSnapshot as any)?.yearOfStudy ? `${(reg.userSnapshot as any).yearOfStudy} Year` : 'N/A'} • {(reg.userSnapshot as any)?.degreeBranch || 'N/A'}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 space-y-0.5">
-                                            <div className="text-slate-600">{reg.userSnapshot.mobileNumber}</div>
-                                            <div className="text-slate-400 text-xs">{(reg.userSnapshot as any).email}</div>
+                                            <div className="text-slate-600">{reg.userSnapshot?.mobileNumber || 'N/A'}</div>
+                                            <div className="text-slate-400 text-xs">{(reg.userSnapshot as any)?.email || 'N/A'}</div>
                                         </td>
                                         {event.formConfig?.askTeamName && (
                                             <td className="px-6 py-4 font-medium text-indigo-600">

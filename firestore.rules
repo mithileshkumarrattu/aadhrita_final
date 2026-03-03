@@ -103,6 +103,14 @@ service cloud.firestore {
         && (request.resource.data.get('passTokens', []) == resource.data.get('passTokens', [])));
     }
 
+    // --- HACKATHON PASSES ---
+    match /hackathon_passes/{passId} {
+      // Staff need to manually recover/generate passes via Admin UI
+      // Users need to read their own passes by token or teamId (done in API usually, but allowing read if they hold it)
+      allow read: if isStaff() || isAuthenticated();
+      allow write: if isStaff();
+    }
+
     // --- FREEFIRE TEAMS ---
     match /freefire_teams/{teamId} {
       allow read: if isStaff() || (isAuthenticated() && resource != null && (

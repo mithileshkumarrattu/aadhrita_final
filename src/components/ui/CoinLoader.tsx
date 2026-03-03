@@ -11,16 +11,15 @@ interface CoinLoaderProps {
 export function CoinLoader({ size = 64, className, text }: CoinLoaderProps) {
     return (
         <div className={cn("flex flex-col items-center justify-center gap-4", className)}>
-            <div className="relative perspective-1000">
-                <Image
-                    src="/AFT.png"
-                    alt="Loading..."
-                    width={size}
-                    height={size}
-                    className="animate-spin-3d drop-shadow-[0_0_15px_rgba(250,204,21,0.6)]"
-                    priority
-                />
-            </div>
+            <Image
+                src="/AFT.png"
+                alt="Loading..."
+                width={size}
+                height={size}
+                className="animate-spin drop-shadow-[0_0_12px_rgba(250,204,21,0.5)]"
+                priority
+                style={{ animationDuration: '1.2s' }}
+            />
             {text && (
                 <p className="text-sm font-bold uppercase tracking-widest text-[#FACC15] animate-pulse drop-shadow-md">
                     {text}

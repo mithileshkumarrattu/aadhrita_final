@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebase-admin';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -11,21 +10,11 @@ export async function GET(request: Request) {
     }
 
     try {
-        // 1. Get User's Wallet Address first (to find incoming txs)
-        // Wait, 'transactions' log has 'userId' for outgoing.
-        // Incoming might not be logged with 'userId' of receiver if sent by someone else.
-        // Ideally we query by 'from' OR 'to' address.
-        // But for MVP, let's just query by 'userId' (Outgoing) and maybe add Incoming support if we track it.
-        // Actually, let's query the 'transactions' collection for `userId == X`.
-
-        const q = query(
-            collection(db, 'transactions'),
-            where('userId', '==', userId),
-            orderBy('timestamp', 'desc'),
-            limit(20)
-        );
-
-        const snapshot = await getDocs(q);
+        const snapshot = await adminDb.collection('transactions')
+            .where('userId', '==', userId)
+            .orderBy('timestamp', 'desc')
+            .limit(20)
+            .get();
 
         const history = snapshot.docs.map(doc => ({
             id: doc.id,
