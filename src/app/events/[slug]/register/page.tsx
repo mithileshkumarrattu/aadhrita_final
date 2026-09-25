@@ -9,9 +9,10 @@ import { isTeamNameAvailable, verifyTeamId } from '@/lib/team-service';
 import { EventRegistrationCard } from '@/components/events/EventRegistrationCard';
 import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, CreditCard } from 'lucide-react';
+import { Sparkles, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { RoyalFormLayout } from '@/components/layout/RoyalFormLayout';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 export default function EventRegistrationPage() {
     const params = useParams();
@@ -127,6 +128,12 @@ export default function EventRegistrationPage() {
             if (event.maxTeamSize > 1 || event.minTeamSize > 1) {
                 if (response.isTeamLeader) {
                     if (!response.teamName?.trim()) throw "Team Name is required.";
+
+                    // Prevent friends from accidentally creating a new Ghost variant team by pasting a Team ID here
+                    if (response.teamName.trim().match(/_\d{4}$/) && !response.teamName.includes(' ')) {
+                        throw "You entered a Team ID. If you are trying to join your friends, please select 'Join Existing Team' below.";
+                    }
+
                     const isAvailable = await isTeamNameAvailable(event.id!, response.teamName.trim());
                     if (!isAvailable) throw `Team Name '${response.teamName}' is already taken.`;
                 } else {
@@ -150,8 +157,9 @@ export default function EventRegistrationPage() {
                 return;
             }
 
-            // Custom fields validation
-            if (event.formConfig?.customFields) {
+            // Custom fields validation (Skip for Team Members in Team Events as they don't see these fields)
+            const showCustomFields = !(event.minTeamSize > 1 && !response.isTeamLeader);
+            if (showCustomFields && event.formConfig?.customFields) {
                 for (const f of event.formConfig.customFields) {
                     if (f.required && !response.customResponses?.[f.id]) throw `${f.label} is required`;
                 }
@@ -258,15 +266,27 @@ export default function EventRegistrationPage() {
             const { doc, setDoc } = await import('firebase/firestore');
             await setDoc(doc(db, 'events', event.id!, 'registrations', user.uid), { ...registrationData, orderId });
 
-            // --- Payment Redirect (UPI QR Mode) ---
+            // --- Payment Redirect (UPI QR / Intent Mode) ---
             if (data.deepLink) {
                 window.location.href = data.deepLink;
                 return;
             }
 
+            // --- Payment Redirect (Official Web Form POST Method) ---
             const baseUrl = process.env.NODE_ENV === "production" ? "https://securegw.paytm.in" : "https://securegw-stage.paytm.in";
-            const paytmUrl = `${baseUrl}/theia/api/v1/showPaymentPage?mid=${data.mid}&orderId=${orderId}&txnToken=${data.txnToken}`;
-            window.location.href = paytmUrl;
+
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `${baseUrl}/theia/api/v1/showPaymentPage?mid=${data.mid}&orderId=${orderId}`;
+
+            const tokenInput = document.createElement('input');
+            tokenInput.type = 'hidden';
+            tokenInput.name = 'txnToken';
+            tokenInput.value = data.txnToken;
+            form.appendChild(tokenInput);
+
+            document.body.appendChild(form);
+            form.submit();
             return;
 
         } catch (error: any) {
@@ -279,8 +299,7 @@ export default function EventRegistrationPage() {
     if (loading) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#050505]">
-                <Loader2 className="w-8 h-8 animate-spin text-red-600" />
-                <p className="text-sm text-gray-500 font-medium">Loading Event Details...</p>
+                <CoinLoader size={48} text="Gathering Event Insights..." />
             </div>
         );
     }
@@ -437,7 +456,7 @@ export default function EventRegistrationPage() {
                                     className="w-full bg-red-600 hover:bg-red-700 font-bold py-6 text-lg rounded-xl shadow-lg shadow-red-500/20 transition-all hover:scale-[1.01]"
                                     disabled={submitting}
                                 >
-                                    {submitting ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
+                                    {submitting ? <CoinLoader size={20} className="mr-2" /> : null}
                                     {submitting ? "Processing..." : (getPricing() === 0 ? "Confirm Registration" : "Proceed to Pay")}
                                 </Button>
                             </div>

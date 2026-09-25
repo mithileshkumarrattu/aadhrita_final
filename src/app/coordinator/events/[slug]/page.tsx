@@ -5,9 +5,10 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { db, Event, EventRegistration } from '@/lib/db';
 import { doc, getDoc, collection, getDocs, orderBy, query } from 'firebase/firestore';
-import { Loader2, ArrowLeft, Download, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Download, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 export default function CoordinatorEventDetailsPage() {
     const { user } = useAuth();
@@ -161,7 +162,7 @@ export default function CoordinatorEventDetailsPage() {
     if (loading) {
         return (
             <div className="flex justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-slate-300" />
+                <CoinLoader size={48} text="Gathering Attendance Data..." />
             </div>
         );
     }

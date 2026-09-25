@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { doc, deleteDoc, getDoc } from 'firebase/firestore';
+import { verifyAdminRequest } from '@/lib/api-auth';
 
 export async function POST(request: Request) {
+    const auth = await verifyAdminRequest(request);
+    if (!auth.ok) return auth.response;
+
     try {
         const { userId, adminId } = await request.json();
 

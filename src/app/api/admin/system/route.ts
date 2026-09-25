@@ -1,52 +1,66 @@
 
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebase-admin';
 import { getAdminWallet } from '@/lib/wallet-utils';
 import { formatEther } from 'ethers';
-import { provider } from '@/lib/wallet-utils';
+import { getProvider } from '@/lib/wallet-utils';
+import { verifyAdminRequest } from '@/lib/api-auth';
 
-export async function GET() {
+export async function GET(request: Request) {
+    // NOTE: GET is intentionally public - it only returns non-sensitive system settings
+    // (airdropEnabled, rewardEnabled, admin wallet address). POST is admin-only.
     try {
         // 1. Fetch System Settings
-        const configRef = doc(db, 'system', 'config');
-        const configSnap = await getDoc(configRef);
+        const configSnap = await adminDb.collection('system').doc('config').get();
 
         let airdropEnabled = true; // Default to true
-        if (configSnap.exists()) {
-            airdropEnabled = configSnap.data().airdropEnabled ?? true;
+        let rewardEnabled = false; // Default to false
+        if (configSnap.exists) {
+            airdropEnabled = configSnap.data()?.airdropEnabled ?? true;
+            rewardEnabled = configSnap.data()?.rewardEnabled ?? false;
         }
 
         // 2. Fetch Admin Wallet Info
-        const adminWallet = getAdminWallet();
-        // provider is already imported
+        let gasBalance = '0.0';
+        let tokenBalance = '0.0';
+        let adminAddress = '';
 
-        // Fetch Balance
-        // We use the provider directly for native ETH (or MATIC/POL) balance for Gas
-        // For Token Balance (AFT), we'd need the contract. Let's return both if possible, or just Gas for now as requested.
-        // Actually user asked "are really tokens going from admin wallet". We should show Token Balance too.
+        try {
+            const adminWallet = getAdminWallet();
+            adminAddress = adminWallet.address;
 
-        const balanceWei = await provider.getBalance(adminWallet.address);
-        const gasBalance = formatEther(balanceWei);
+            try {
+                const balanceWei = await getProvider().getBalance(adminWallet.address);
+                gasBalance = formatEther(balanceWei);
+            } catch (e) {
+                console.error("Failed to fetch ETH balance", e);
+            }
 
-        // Fetch Token Balance (AFT)
-        // We need the contract instance. 
-        // Importing getTokenContract might cause circular deps if not careful? No, it's fine.
-        const { getTokenContract } = await import('@/lib/wallet-utils');
-        const contract = getTokenContract(adminWallet);
-        const tokenBalanceWei = await contract.balanceOf(adminWallet.address);
-        const tokenBalance = formatEther(tokenBalanceWei);
+            try {
+                const { getTokenContract } = await import('@/lib/wallet-utils');
+                const contract = getTokenContract(adminWallet);
+                const tokenBalanceWei = await contract.balanceOf(adminWallet.address);
+                tokenBalance = formatEther(tokenBalanceWei);
+            } catch (e) {
+                console.error("Failed to fetch AFT balance", e);
+            }
+        } catch (e) {
+            console.error("Admin Wallet Not Configured:", e);
+        }
 
         return NextResponse.json({
             success: true,
             settings: {
-                airdropEnabled
+                airdropEnabled,
+                rewardEnabled
             },
-            adminWallet: {
-                address: adminWallet.address,
-                gasBalance,
-                tokenBalance
-            }
+            ...(adminAddress ? {
+                adminWallet: {
+                    address: adminAddress,
+                    gasBalance,
+                    tokenBalance
+                }
+            } : {})
         });
 
     } catch (error: any) {
@@ -56,18 +70,26 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+    const auth = await verifyAdminRequest(request);
+    if (!auth.ok) return auth.response;
+
     try {
-        const { airdropEnabled } = await request.json();
+        const body = await request.json();
+
+        // Merge the incoming settings with existing ones
+        const updateData: any = {
+            updatedAt: new Date()
+        };
+
+        if (typeof body.airdropEnabled !== 'undefined') updateData.airdropEnabled = body.airdropEnabled;
+        if (typeof body.rewardEnabled !== 'undefined') updateData.rewardEnabled = body.rewardEnabled;
 
         // Save to Firestore
-        await setDoc(doc(db, 'system', 'config'), {
-            airdropEnabled,
-            updatedAt: new Date()
-        }, { merge: true });
+        await adminDb.collection('system').doc('config').set(updateData, { merge: true });
 
         return NextResponse.json({
             success: true,
-            airdropEnabled
+            settings: updateData
         });
 
     } catch (error: any) {

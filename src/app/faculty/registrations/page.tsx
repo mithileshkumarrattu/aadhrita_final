@@ -3,19 +3,22 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStaffSession, clearStaffSession } from '@/lib/staff-auth';
-import { db, Event, EventRegistration } from '@/lib/db';
+import { db, Event, EventRegistration, COLLECTIONS } from '@/lib/db';
 import { doc, getDoc, collection, getDocs, orderBy, query, limit, onSnapshot, QuerySnapshot, DocumentData } from 'firebase/firestore';
-import { Loader2, Download, RefreshCw, FileText, Filter, Users, Ticket, Building2, Globe, TrendingUp, CheckCircle } from 'lucide-react';
+import { Download, RefreshCw, FileText, Filter, Users, Ticket, Building2, Globe, TrendingUp, CheckCircle, Shield, BedDouble } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { EventService } from '@/services/EventService';
 import { useLiveOverview, EventSummaryRow } from './summary';
 import { Card } from '@/components/ui/card';
+import { useAuth } from '@/contexts/AuthContext';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 export default function FacultyRegistrationsPage() {
     const router = useRouter();
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const { userProfile, profileLoading } = useAuth();
 
     // State
     const [events, setEvents] = useState<any[]>([]);
@@ -27,7 +30,7 @@ export default function FacultyRegistrationsPage() {
     const [branchFilter, setBranchFilter] = useState<string>('ALL');
 
     // Live Overview Hook (Only active when Overview or Entry Pass is selected)
-    const { summaryData: overviewData, usersData: entryPassesData, overviewLoading, refreshSummary } = useLiveOverview(
+    const { summaryData: overviewData, usersData: entryPassesData, grossRevenue, overviewLoading, refreshSummary } = useLiveOverview(
         selectedEventId === 'OVERVIEW' || selectedEventId === 'ENTRY_PASS' ? events : []
     );
 
@@ -70,8 +73,12 @@ export default function FacultyRegistrationsPage() {
 
     // 1. Auth Check & Fetch All Events for Dropdown
     useEffect(() => {
+        if (profileLoading) return;
+
         const session = getStaffSession();
-        if (!session || session.role !== 'registrations_viewer') {
+        const isAdmin = userProfile?.role === 'admin';
+
+        if (!session && !isAdmin) {
             router.replace('/faculty');
             return;
         }
@@ -371,7 +378,7 @@ export default function FacultyRegistrationsPage() {
         document.body.removeChild(link);
     };
 
-    if (initLoading || !isAuthenticated) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
+    if (initLoading || !isAuthenticated) return <div className="p-8 flex items-center justify-center min-h-[400px]"><CoinLoader text="Synchronizing Database..." /></div>;
 
     const totalMvgr = overviewData.reduce((acc, r) => acc + r.mvgrParticipants, 0);
     const totalOther = overviewData.reduce((acc, r) => acc + r.otherParticipants, 0);
@@ -380,25 +387,40 @@ export default function FacultyRegistrationsPage() {
     // Core Metrics
     const entryPassRow = overviewData.find(r => r.id === 'ENTRY_PASS');
     const hackathonRow = overviewData.find(r => r.id === 'HACKATHON');
+    const ffRow = overviewData.find(r => r.id === 'FREEFIRE');
+    const footfallRow = overviewData.find(r => r.id === 'TOTAL_FOOTFALL');
 
     const epMvgr = entryPassRow?.mvgrParticipants || 0;
     const epOther = entryPassRow?.otherParticipants || 0;
+    const revEpMvgr = epMvgr * 200;
+    const revEpOther = epOther * 300;
 
     const htMvgr = hackathonRow?.mvgrParticipants || 0;
     const htOther = hackathonRow?.otherParticipants || 0;
+    const htTeamsCount = hackathonRow?.totalTeams || 0;
+    const revHt = hackathonRow?.revenue || 0;
 
-    // Regular Events
-    const eventsMvgr = totalMvgr - epMvgr - htMvgr;
-    const eventsOther = totalOther - epOther - htOther;
-    const eventsTotal = eventsMvgr + eventsOther;
+    const ffMvgr = ffRow?.mvgrParticipants || 0;
+    const ffOther = ffRow?.otherParticipants || 0;
+    const ffTeamsCount = ffRow?.totalTeams || 0;
+    const revFf = ffRow?.revenue || 0;
 
-    // Revenue Calculation Breakdown (New Tiers)
-    const revEpMvgr = epMvgr * 200;
-    const revEpOther = epOther * 300;
-    const revHt = (htMvgr + htOther) * 600;
+    // Regular Events — sum revenue from API (actual EVT_ transaction amounts distributed proportionally)
+    const economyEvents = overviewData.filter(r =>
+        r.id !== 'ENTRY_PASS' &&
+        r.id !== 'HACKATHON' &&
+        r.id !== 'FREEFIRE' &&
+        r.id !== 'TOTAL_FOOTFALL' &&
+        r.id !== 'ACCOMMODATION'
+    );
+    const eventsTotal = economyEvents.reduce((acc, r) => acc + r.totalParticipants, 0);
     const revEvents = eventsTotal * 100;
 
-    const expectedRevenue = revEpMvgr + revEpOther + revHt + revEvents;
+    const accRow = overviewData.find(r => r.id === 'ACCOMMODATION');
+    const revAcc = accRow?.revenue || 0;
+
+    const totalRevenue = grossRevenue;
+    const uniqueFootfall = footfallRow?.totalParticipants || 0;
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-red-500/30">
@@ -467,7 +489,7 @@ export default function FacultyRegistrationsPage() {
                                 variant="outline"
                                 className="border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 h-12 px-4 font-bold"
                             >
-                                <RefreshCw className={`w-4 h-4 mr-2 ${overviewLoading ? 'animate-spin' : ''}`} />
+                                <RefreshCw className={`w-4 h-4 mr-2 ${overviewLoading ? 'animate-pulse' : ''}`} />
                                 Refresh
                             </Button>
                         )}
@@ -481,7 +503,8 @@ export default function FacultyRegistrationsPage() {
                 {selectedEventId === 'OVERVIEW' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                         {/* DETAILED FINANCIAL & IMPACT BREAKDOWN */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* DETAILED FINANCIAL & IMPACT BREAKDOWN */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                             {/* Entry Passes */}
                             <Card className="bg-zinc-900/50 border-emerald-500/20 p-5 flex flex-col relative overflow-hidden group">
                                 <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 text-emerald-500 transition-transform"><Ticket className="w-16 h-16" /></div>
@@ -525,10 +548,40 @@ export default function FacultyRegistrationsPage() {
                                 <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><Building2 className="w-3 h-3" /> Hackathon</span>
                                 <div className="space-y-3 relative z-10 flex-col flex h-full justify-between pb-1">
                                     <div className="flex justify-between items-center bg-black/30 p-2 rounded mt-auto mb-auto">
-                                        <div className="flex items-center gap-2 flex-col items-start"><span className="text-xs text-zinc-400">All Participants (<span className="text-indigo-400 font-mono">₹600</span>)</span><span className="text-[9px] text-zinc-600">Leader + Members</span></div>
+                                        <div className="flex items-center gap-2 flex-col items-start"><span className="text-xs text-zinc-400">All People (<span className="text-indigo-400 font-mono">₹600</span>)</span><span className="text-[9px] text-zinc-600">Per Person</span></div>
                                         <div className="text-right">
-                                            <div className="text-lg font-bold text-white">{(htMvgr + htOther)} <span className="text-[10px] font-normal text-zinc-500">ppl</span></div>
+                                            <div className="text-lg font-bold text-white">{htMvgr + htOther} <span className="text-[10px] font-normal text-zinc-500">ppl</span></div>
                                             <div className="text-sm font-mono text-emerald-400 font-bold">₹{revHt.toLocaleString('en-IN')}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            {/* FreeFire */}
+                            <Card className="bg-zinc-900/50 border-red-500/20 p-5 flex flex-col relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 text-red-500 transition-transform"><Shield className="w-16 h-16" /></div>
+                                <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><Shield className="w-3 h-3" /> FreeFire</span>
+                                <div className="space-y-3 relative z-10 flex-col flex h-full justify-between pb-1">
+                                    <div className="flex justify-between items-center bg-black/30 p-2 rounded mt-auto mb-auto">
+                                        <div className="flex items-center gap-2 flex-col items-start"><span className="text-xs text-zinc-400">All Teams (<span className="text-red-400 font-mono">₹400</span>)</span><span className="text-[9px] text-zinc-600">Per Team</span></div>
+                                        <div className="text-right">
+                                            <div className="text-lg font-bold text-white">{ffTeamsCount} <span className="text-[10px] font-normal text-zinc-500">teams</span></div>
+                                            <div className="text-sm font-mono text-emerald-400 font-bold">₹{revFf.toLocaleString('en-IN')}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            {/* Accommodation */}
+                            <Card className="bg-zinc-900/50 border-blue-500/20 p-5 flex flex-col relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 text-blue-500 transition-transform"><BedDouble className="w-16 h-16" /></div>
+                                <span className="text-[10px] text-blue-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-1"><BedDouble className="w-3 h-3" /> Accommodation</span>
+                                <div className="space-y-3 relative z-10 flex-col flex h-full justify-between pb-1">
+                                    <div className="flex justify-between items-center bg-black/30 p-2 rounded mt-auto mb-auto">
+                                        <div className="flex items-center gap-2 flex-col items-start"><span className="text-xs text-zinc-400">All Stays (<span className="text-blue-400 font-mono">₹300/500</span>)</span><span className="text-[9px] text-zinc-600">Per Day</span></div>
+                                        <div className="text-right">
+                                            <div className="text-lg font-bold text-white">{accRow?.totalParticipants || 0} <span className="text-[10px] font-normal text-zinc-500">ppl</span></div>
+                                            <div className="text-sm font-mono text-emerald-400 font-bold">₹{revAcc.toLocaleString('en-IN')}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -541,12 +594,12 @@ export default function FacultyRegistrationsPage() {
                                 <div className="space-y-3 relative z-10 mt-auto">
                                     <div className="flex justify-between items-end">
                                         <div>
-                                            <div className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Total Footfall</div>
-                                            <div className="text-2xl font-black text-white">{totalParticipants} <span className="text-xs font-normal text-zinc-500">records</span></div>
+                                            <div className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Unique Footfall</div>
+                                            <div className="text-2xl font-black text-white">{uniqueFootfall} <span className="text-xs font-normal text-zinc-500">ppl</span></div>
                                         </div>
                                         <div className="text-right">
                                             <div className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">Gross Revenue</div>
-                                            <div className="text-2xl font-black font-mono text-emerald-400">₹{expectedRevenue.toLocaleString('en-IN')}</div>
+                                            <div className="text-2xl font-black font-mono text-emerald-400">₹{totalRevenue.toLocaleString('en-IN')}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -563,7 +616,7 @@ export default function FacultyRegistrationsPage() {
                                 </div>
                                 <div className="space-y-6 overflow-y-auto px-6 py-6 custom-scrollbar flex-1">
                                     {overviewLoading ? (
-                                        <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-neutral-500" /></div>
+                                        <div className="flex justify-center p-8"><CoinLoader size={32} /></div>
                                     ) : (
                                         <>
                                             {/* Category: Passes */}
@@ -672,7 +725,7 @@ export default function FacultyRegistrationsPage() {
                                 <div>
                                     <h2 className="text-2xl font-black text-sky-400 flex items-center gap-3">
                                         🏫 Branch / Department View
-                                        {overviewLoading && <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />}
+                                        {overviewLoading && <CoinLoader size={20} className="inline-block ml-3" />}
                                     </h2>
                                     <p className="text-xs text-neutral-500 mt-1">MVGR College students only · {entryPassesData.filter(u => isMvgrCollege(u.collegeName, u.email)).length} total registered</p>
                                 </div>
@@ -680,7 +733,7 @@ export default function FacultyRegistrationsPage() {
 
                             {/* Summary Cards — one per branch */}
                             {branchList.length === 0 && overviewLoading && (
-                                <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-neutral-500" /></div>
+                                <div className="flex justify-center py-16"><CoinLoader size={40} /></div>
                             )}
                             {branchList.length > 0 && (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -813,7 +866,7 @@ export default function FacultyRegistrationsPage() {
                                 <div>
                                     <h3 className="text-xl font-bold text-emerald-400 flex items-center gap-3">
                                         🎫 General Entry Passes
-                                        {overviewLoading && <Loader2 className="w-4 h-4 animate-spin text-neutral-400" />}
+                                        {overviewLoading && <CoinLoader size={16} className="inline-block ml-2" />}
                                     </h3>
                                     <span className="text-xs text-neutral-500 font-mono uppercase tracking-widest mt-1 block">ID: ENTRY_PASS{branchFilter !== 'ALL' ? ` · Branch: ${branchFilter}` : ''}</span>
                                 </div>
@@ -836,7 +889,7 @@ export default function FacultyRegistrationsPage() {
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
                                         {overviewLoading && entryPassesData.length === 0 ? (
-                                            <tr><td colSpan={5} className="text-center py-12"><Loader2 className="w-8 h-8 animate-spin mx-auto text-neutral-500" /></td></tr>
+                                            <tr><td colSpan={5} className="text-center py-12"><CoinLoader size={32} /></td></tr>
                                         ) : filteredEntryPasses.length === 0 ? (
                                             <tr><td colSpan={5} className="text-center py-12 text-neutral-500 font-medium">
                                                 {branchFilter !== 'ALL' ? `No MVGR students found for branch "${branchFilter}".` : 'No active entry passes found.'}
@@ -883,7 +936,7 @@ export default function FacultyRegistrationsPage() {
                                 <div>
                                     <h3 className="text-xl font-bold text-white flex items-center gap-3">
                                         {currentEvent.title}
-                                        {loading && <Loader2 className="w-4 h-4 animate-spin text-neutral-400" />}
+                                        {loading && <CoinLoader size={16} className="inline-block ml-2" />}
                                     </h3>
                                     <span className="text-xs text-neutral-500 font-mono uppercase tracking-widest mt-1 block">ID: {currentEvent.id}</span>
                                 </div>

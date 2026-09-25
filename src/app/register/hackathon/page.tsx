@@ -3,15 +3,16 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, getCountFromServer } from 'firebase/firestore';
 import { db, HackathonTeam, COLLECTIONS } from '@/lib/db';
 import { RoyalFormLayout } from '@/components/layout/RoyalFormLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, AlertCircle, CheckCircle2, Trophy, ArrowRight, Lock, Search, BedDouble, Calendar, Users, Copy, ExternalLink } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Trophy, ArrowRight, Lock, Search, BedDouble, Calendar, Users, Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 // Config
 const HACKATHON_FEE = 600; // Per person
@@ -40,6 +41,8 @@ export default function HackathonFinalRegisterPage() {
     const [teamData, setTeamData] = React.useState<HackathonTeam | null>(null);
     const [currentStep, setCurrentStep] = React.useState(1);
     const [paymentLoading, setPaymentLoading] = React.useState(false);
+    const [paidTeamsCount, setPaidTeamsCount] = React.useState<number | null>(null);
+    const LIMIT = 101;
 
     // Accommodation state: index 0 = leader, 1+ = members
     const [accommodation, setAccommodation] = React.useState<Record<number, AccommodationChoice>>({});
@@ -47,9 +50,20 @@ export default function HackathonFinalRegisterPage() {
     // Edited contact details: index 0 = leader, 1+ = members
     const [editedContacts, setEditedContacts] = React.useState<Record<number, { email: string; phone: string }>>({});
 
-    // Initial Auth Check
+    // Initial Auth Check & Count Paid Teams
     React.useEffect(() => {
         if (!authLoading) setLoading(false);
+
+        const fetchPaidCount = async () => {
+            try {
+                const q = query(collection(db, COLLECTIONS.HACKATHON), where('paymentStatus', 'in', ['paid', 'success']));
+                const snapshot = await getCountFromServer(q);
+                setPaidTeamsCount(snapshot.data().count);
+            } catch (err) {
+                console.error("Error fetching paid teams count:", err);
+            }
+        };
+        fetchPaidCount();
     }, [authLoading]);
 
     // Initialize state when team data loads
@@ -370,7 +384,7 @@ export default function HackathonFinalRegisterPage() {
     }, [teamData]);
 
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center bg-black"><Loader2 className="w-10 h-10 text-yellow-500 animate-spin" /></div>;
+        return <div className="min-h-screen flex items-center justify-center bg-black"><CoinLoader text="Searching for Team..." /></div>;
     }
 
     // --- State: Not Logged In (Inline Login) ---
@@ -461,6 +475,29 @@ export default function HackathonFinalRegisterPage() {
                                     toast.success("All links copied! Share via WhatsApp");
                                 }}
                             >📋 Copy All Links (for WhatsApp)</Button>
+                        </div>
+                    )}
+
+                    {/* Paid but no passes yet */}
+                    {teamData?.paymentStatus === 'paid' && (!teamData.passTokens || teamData.passTokens.length === 0) && (
+                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6 mt-4 text-center space-y-4">
+                            <div className="w-12 h-12 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto">
+                                <Calendar className="w-6 h-6 text-amber-500" />
+                            </div>
+                            <div className="space-y-2">
+                                <h3 className="text-amber-400 font-bold">Passes Generating...</h3>
+                                <p className="text-xs text-neutral-400 leading-relaxed">
+                                    Your payment is confirmed! We are currently generating your team passes. This usually takes 5-10 minutes.
+                                </p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                                onClick={() => window.location.reload()}
+                            >
+                                Refresh Status
+                            </Button>
                         </div>
                     )}
 
@@ -737,26 +774,25 @@ export default function HackathonFinalRegisterPage() {
                             <div className="text-4xl font-black text-white">₹{pricing.total}</div>
                         </div>
 
-                        {/* ⚠️ Industry-standard payment caution — displayed just before Pay Now */}
-                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4 flex items-start gap-3">
-                            <span className="text-amber-400 text-lg shrink-0">⚠️</span>
-                            <div className="space-y-1">
-                                <p className="text-sm font-bold text-amber-300">Important — Please Read Before Paying</p>
-                                <ul className="text-xs text-amber-400/80 space-y-1 leading-relaxed list-disc list-inside">
-                                    <li>Do <b>NOT</b> close the payment app until you see the success screen.</li>
-                                    <li>Do <b>NOT</b> press the back button during payment.</li>
-                                    <li>Do <b>NOT</b> refresh this page while payment is in progress.</li>
-                                    <li>Wait for the page to redirect automatically after completion.</li>
-                                </ul>
+                        {/* ⚠️ Limit Reached — displayed just before Pay Now */}
+                        {paidTeamsCount !== null && paidTeamsCount >= LIMIT && (
+                            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-4 flex items-start gap-3">
+                                <span className="text-red-400 text-lg shrink-0">⚠️</span>
+                                <div className="space-y-1">
+                                    <p className="text-sm font-bold text-red-300">Maximum Capacity Reached</p>
+                                    <p className="text-xs text-red-400/80 leading-relaxed">
+                                        WE HAVE REACHED THE MAXIMUM LIMIT FOR HACKATHON! THANK YOU FOR YOUR HUGE RESPONSE.
+                                    </p>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         <Button
                             onClick={handlePayment}
-                            disabled={paymentLoading}
+                            disabled={paymentLoading || (paidTeamsCount !== null && paidTeamsCount >= LIMIT)}
                             className="w-full h-14 text-xl font-bold bg-yellow-500 hover:bg-yellow-600 text-black shadow-lg shadow-yellow-900/20 transition-all active:scale-[0.98]"
                         >
-                            {paymentLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : "Pay Now (UPI Only)"}
+                            {paymentLoading ? <div className="flex items-center gap-2"><CoinLoader size={24} /> <span>Securing...</span></div> : (paidTeamsCount !== null && paidTeamsCount >= LIMIT ? "Limit Reached" : "Pay Now (UPI Only)")}
                         </Button>
 
                         {/* TEST MODE: Only visible on localhost */}
@@ -766,7 +802,7 @@ export default function HackathonFinalRegisterPage() {
                                 disabled={paymentLoading}
                                 className="w-full h-12 text-sm font-bold bg-orange-500 hover:bg-orange-600 text-black mt-2 border-2 border-dashed border-orange-700"
                             >
-                                {paymentLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "⚡ TEST: Simulate Payment (Dev Only)"}
+                                {paymentLoading ? <CoinLoader size={20} /> : "⚡ TEST: Simulate Payment (Dev Only)"}
                             </Button>
                         )}
 

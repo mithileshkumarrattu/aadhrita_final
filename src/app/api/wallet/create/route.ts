@@ -6,13 +6,15 @@ import { parseEther } from 'ethers';
 
 export async function POST(request: Request) {
     try {
-        const { userId, email, collectionName = 'users' } = await request.json();
+        const { userId, email, role, collectionName = 'users' } = await request.json();
 
         if (!userId) {
             return NextResponse.json({ error: 'UserId is required' }, { status: 400 });
         }
 
-        const targetCollection = collectionName === 'staff' ? COLLECTIONS.STAFF : collectionName;
+        const targetCollection = collectionName === 'staff' || collectionName === 'staff_credentials'
+            ? COLLECTIONS.STAFF
+            : collectionName;
 
         const userRef = adminDb.collection(targetCollection).doc(userId);
         const userDoc = await userRef.get();
@@ -23,6 +25,51 @@ export async function POST(request: Request) {
                 address: userDoc.data()?.walletAddress,
                 message: 'Wallet already exists'
             });
+        }
+
+        // --- SHARED WALLET LOGIC FOR CONVENERS ---
+        if (role === 'convener') {
+            const convenersSnap = await adminDb.collection(COLLECTIONS.STAFF)
+                .where('role', '==', 'convener')
+                .get();
+
+            let existingWallet: any = null;
+            for (const doc of convenersSnap.docs) {
+                const data = doc.data();
+                if (data.walletAddress && doc.id !== userId) {
+                    // Found another convener with a wallet!
+                    const wDoc = await adminDb.collection('wallets').doc(doc.id).get();
+                    if (wDoc.exists) {
+                        existingWallet = { ...wDoc.data(), sourceId: doc.id };
+                        break;
+                    }
+                }
+            }
+
+            if (existingWallet) {
+                console.log(`Sharing Convener Wallet from ${existingWallet.sourceId} to ${userId}`);
+                const batch = adminDb.batch();
+                // Create a duplicate wallet entry for this user (so Auth/APIs find it by userId)
+                batch.set(adminDb.collection('wallets').doc(userId), {
+                    ...existingWallet,
+                    userId: userId,
+                    sharedFrom: existingWallet.sourceId,
+                    createdAt: new Date(),
+                    email: email || 'unknown'
+                });
+                // Update User/Staff Doc
+                batch.update(userRef, {
+                    walletAddress: existingWallet.address,
+                    walletCreatedAt: new Date()
+                });
+                await batch.commit();
+
+                return NextResponse.json({
+                    success: true,
+                    address: existingWallet.address,
+                    message: 'Shared Convener wallet assigned successfully'
+                });
+            }
         }
 
         // Create new wallet
@@ -56,10 +103,12 @@ export async function POST(request: Request) {
 
         if (airdropEnabled) {
             try {
+                // 1. Fund Gas (Native Token for transactions)
                 console.log(`Funding Gas for ${wallet.address}...`);
                 await fundWallet(wallet.address); // Send ETH for gas
 
-                // Welcome Bonus: 50 AFT
+                // 2. Welcome Bonus: 50 AFT (DISABLED as per user request)
+                /*
                 console.log(`Sending Welcome Bonus (50 AFT) to ${wallet.address}...`);
                 const adminWallet = getAdminWallet();
                 const contract = getTokenContract(adminWallet);
@@ -67,11 +116,9 @@ export async function POST(request: Request) {
                 const tx = await contract.transfer(wallet.address, parseEther("50"));
                 await tx.wait();
                 console.log("Welcome Bonus Sent: " + tx.hash);
-
+                */
             } catch (fundErr) {
-                console.error("Funding/Bonus failed:", fundErr);
-                // We don't fail the request if funding fails, just log it. 
-                // User can still be funded manually by Admin later.
+                console.error("Funding failed:", fundErr);
             }
         }
 

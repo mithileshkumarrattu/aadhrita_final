@@ -34,10 +34,11 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+import { authFetch } from '@/lib/auth-fetch';
 
 export default function AdminWalletsPage() {
     const router = useRouter();
-    const { userProfile } = useAuth();
+    const { userProfile, user } = useAuth();
     const [users, setUsers] = React.useState<any[]>([]);
     const [staff, setStaff] = React.useState<any[]>([]);
     const [loading, setLoading] = React.useState(true);
@@ -46,8 +47,14 @@ export default function AdminWalletsPage() {
     const [adminStats, setAdminStats] = React.useState<any>(null);
     const [transactions, setTransactions] = React.useState<any[]>([]);
 
+    // Pagination State
+    const [currentPage, setCurrentPage] = React.useState(1);
+    const USERS_PER_PAGE = 50;
+    const [activeTab, setActiveTab] = React.useState('users');
+
     // New State for Balances & Selection
     const [balances, setBalances] = React.useState<Record<string, string>>({});
+    const [allowances, setAllowances] = React.useState<Record<string, string>>({});
     const [loadingBalances, setLoadingBalances] = React.useState(false);
     const [selectedUsers, setSelectedUsers] = React.useState<Set<string>>(new Set());
     const [bulkAmount, setBulkAmount] = React.useState('50');
@@ -56,13 +63,22 @@ export default function AdminWalletsPage() {
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [processStatus, setProcessStatus] = React.useState('');
 
+    const getToken = React.useCallback(async (): Promise<string> => {
+        try {
+            return (await user?.getIdToken()) || '';
+        } catch {
+            return '';
+        }
+    }, [user]);
+
     const fetchData = async () => {
         setLoading(true);
+        const token = await getToken();
         try {
             const [usersRes, staffRes, txRes] = await Promise.all([
-                fetch('/api/admin/wallets?type=users'),
-                fetch('/api/admin/wallets?type=staff'),
-                fetch('/api/admin/transactions')
+                authFetch('/api/admin/wallets?type=users', {}, token),
+                authFetch('/api/admin/wallets?type=staff', {}, token),
+                authFetch('/api/admin/transactions', {}, token)
             ]);
 
             const usersData = await usersRes.json();
@@ -99,16 +115,20 @@ export default function AdminWalletsPage() {
     };
 
     React.useEffect(() => {
-        fetchData();
-    }, []);
+        if (userProfile) fetchData();
+    }, [userProfile]);
 
     const loadBalances = async () => {
         const allEntities = [...users, ...staff];
         if (allEntities.length === 0) return;
         setLoadingBalances(true);
-        toast.info("Fetching live balances...");
+        toast.info("Fetching live balances & allowances...");
 
         const newBalances: Record<string, string> = {};
+        const newAllowances: Record<string, string> = {};
+
+        const convener = staff.find(u => u.role === 'convener');
+        const cId = convener?.id;
 
         // Process in chunks of 5
         const chunk = 5;
@@ -123,6 +143,15 @@ export default function AdminWalletsPage() {
                         if (data.exists) {
                             newBalances[u.id] = parseFloat(data.balance).toFixed(2);
                         }
+
+                        // Fetch allowance if user is a coordinator and we found a convener
+                        if (cId && u.role === 'coordinator') {
+                            const allowRes = await fetch(`/api/wallet/allowance?ownerId=${cId}&spenderId=${u.id}`);
+                            const allowData = await allowRes.json();
+                            if (allowData.success) {
+                                newAllowances[u.id] = parseFloat(allowData.allowance).toFixed(2);
+                            }
+                        }
                     } catch (e) {
                         console.error(e);
                     }
@@ -130,16 +159,17 @@ export default function AdminWalletsPage() {
             }));
         }
         setBalances(prev => ({ ...prev, ...newBalances }));
+        setAllowances(prev => ({ ...prev, ...newAllowances }));
         setLoadingBalances(false);
-        toast.success("Balances updated");
+        toast.success("Balances & Allowances updated");
     };
 
     const createWallet = async (userId: string, email: string, collectionName: string = 'users') => {
         try {
-            const res = await fetch('/api/wallet/create', {
+            const res = await authFetch('/api/wallet/create', {
                 method: 'POST',
                 body: JSON.stringify({ userId, email, collectionName }),
-            });
+            }, await getToken());
             if (res.ok) {
                 toast.success(`Wallet created for ${email}`);
                 fetchData();
@@ -152,7 +182,7 @@ export default function AdminWalletsPage() {
 
     const fetchAdminStats = async () => {
         try {
-            const res = await fetch('/api/admin/system');
+            const res = await authFetch('/api/admin/system', {}, await getToken());
             const data = await res.json();
             if (data.success) {
                 setAdminStats(data);
@@ -163,10 +193,10 @@ export default function AdminWalletsPage() {
     const deleteUser = async (userId: string) => {
         if (!confirm("Are you sure? This will DELETE the user and their wallet permanently.")) return;
         try {
-            const res = await fetch('/api/admin/user/delete', {
+            const res = await authFetch('/api/admin/user/delete', {
                 method: 'POST',
                 body: JSON.stringify({ userId }),
-            });
+            }, await getToken());
             if (res.ok) {
                 toast.success("User deleted");
                 fetchData();
@@ -185,10 +215,10 @@ export default function AdminWalletsPage() {
         if (!adminStats) return;
         const newState = !adminStats.settings.airdropEnabled;
         try {
-            const res = await fetch('/api/admin/system', {
+            const res = await authFetch('/api/admin/system', {
                 method: 'POST',
                 body: JSON.stringify({ airdropEnabled: newState }),
-            });
+            }, await getToken());
             if (res.ok) {
                 toast.success(`Auto-Airdrop ${newState ? 'Enabled' : 'Disabled'}`);
                 fetchAdminStats();
@@ -207,13 +237,18 @@ export default function AdminWalletsPage() {
     };
 
     const toggleSelectAll = () => {
-        if (selectedUsers.size === filteredUsers.length) {
+        const currentList = activeTab === 'staff' ? filteredStaff : filteredUsers;
+        if (selectedUsers.size === currentList.length) {
             setSelectedUsers(new Set());
         } else {
-            const newSet = new Set(filteredUsers.map(u => u.id));
+            const newSet = new Set(currentList.map((u: any) => u.id));
             setSelectedUsers(newSet);
         }
     };
+
+    React.useEffect(() => {
+        setSelectedUsers(new Set());
+    }, [activeTab]);
 
     const handleBulkAirdrop = async () => {
         if (selectedUsers.size === 0) return;
@@ -236,10 +271,10 @@ export default function AdminWalletsPage() {
             const user = targets[i];
             setProcessStatus(`Sending to ${user.email} (${i + 1}/${targets.length})...`);
             try {
-                const res = await fetch('/api/admin/distribute', {
+                const res = await authFetch('/api/admin/distribute', {
                     method: 'POST',
                     body: JSON.stringify({ userId: user.id, amount: Number(bulkAmount) }),
-                });
+                }, await getToken());
                 if (res.ok) success++;
                 else fail++;
             } catch (e) { fail++; }
@@ -259,6 +294,14 @@ export default function AdminWalletsPage() {
         (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (u.registrationNumber || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    const totalPages = Math.ceil(filteredUsers.length / USERS_PER_PAGE);
+    const displayedUsers = filteredUsers.slice((currentPage - 1) * USERS_PER_PAGE, currentPage * USERS_PER_PAGE);
+
+    React.useEffect(() => {
+        // Reset page if search changes
+        setCurrentPage(1);
+    }, [searchTerm]);
 
     const filteredStaff = staff.filter((u: any) =>
         (u.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -372,6 +415,28 @@ export default function AdminWalletsPage() {
                                     </span>
                                 </div>
                             </div>
+
+                            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 mt-4">
+                                <div>
+                                    <h3 className="font-bold text-slate-900">AFT Claims for Events</h3>
+                                    <p className="text-xs text-slate-500">Allow Faculty to send 10 AFT when marking attendance.</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        checked={adminStats.settings.rewardEnabled}
+                                        onCheckedChange={async () => {
+                                            const newState = !adminStats.settings.rewardEnabled;
+                                            try {
+                                                const res = await authFetch('/api/admin/system', { method: 'POST', body: JSON.stringify({ rewardEnabled: newState }) }, await getToken());
+                                                if (res.ok) { toast.success(`AFT Claims ${newState ? 'Enabled' : 'Disabled'}`); fetchAdminStats(); }
+                                            } catch (e) { toast.error("Failed to update settings"); }
+                                        }} className="w-6 h-6 border-slate-300 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-600"
+                                    />
+                                    <span className={cn("text-xs font-bold uppercase", adminStats.settings.rewardEnabled ? "text-green-600" : "text-slate-400")}>
+                                        {adminStats.settings.rewardEnabled ? 'Active' : 'Disabled'}
+                                    </span>
+                                </div>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
@@ -380,7 +445,7 @@ export default function AdminWalletsPage() {
             <Card className="border-2 border-black shadow-neo rounded-2xl bg-white overflow-hidden min-h-[500px]">
                 <CardHeader className="border-b-2 border-slate-100 p-4">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <Tabs defaultValue="users" className="w-full">
+                        <Tabs defaultValue="users" value={activeTab} onValueChange={setActiveTab} className="w-full">
                             <div className="flex justify-between items-center mb-4">
                                 <TabsList className="bg-slate-100">
                                     <TabsTrigger value="users" className="font-bold">Students</TabsTrigger>
@@ -419,13 +484,13 @@ export default function AdminWalletsPage() {
                                                     <div className="text-xs font-bold text-slate-400">Loading directory...</div>
                                                 </TableCell>
                                             </TableRow>
-                                        ) : filteredUsers.length === 0 ? (
+                                        ) : displayedUsers.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={5} className="h-40 text-center font-bold opacity-40">
                                                     No users found
                                                 </TableCell>
                                             </TableRow>
-                                        ) : filteredUsers.map((u: any) => (
+                                        ) : displayedUsers.map((u: any) => (
                                             <TableRow key={u.id} className={cn("transition-colors", selectedUsers.has(u.id) ? "bg-indigo-50/50" : "hover:bg-slate-50")}>
                                                 <TableCell>
                                                     <Checkbox
@@ -480,16 +545,52 @@ export default function AdminWalletsPage() {
                                         ))}
                                     </TableBody>
                                 </Table>
+
+                                {totalPages > 1 && (
+                                    <div className="flex items-center justify-between p-4 border-t border-slate-100 bg-slate-50/50">
+                                        <div className="text-xs text-slate-500 font-bold">
+                                            Showing {(currentPage - 1) * USERS_PER_PAGE + 1} to {Math.min(currentPage * USERS_PER_PAGE, filteredUsers.length)} of {filteredUsers.length}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                                disabled={currentPage === 1}
+                                            >
+                                                Previous
+                                            </Button>
+                                            <div className="flex items-center px-4 font-bold text-sm bg-white border border-slate-200 rounded-md">
+                                                Page {currentPage} of {totalPages}
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                                disabled={currentPage === totalPages}
+                                            >
+                                                Next
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                             </TabsContent>
 
                             <TabsContent value="staff" className="m-0">
                                 <Table>
                                     <TableHeader>
                                         <TableRow className="hover:bg-slate-50/50 bg-slate-50 border-b-2 border-slate-100">
+                                            <TableHead className="w-[50px]">
+                                                <Checkbox
+                                                    checked={selectedUsers.size === filteredStaff.length && filteredStaff.length > 0}
+                                                    onCheckedChange={toggleSelectAll}
+                                                />
+                                            </TableHead>
                                             <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500">Coordinator Identity</TableHead>
                                             <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500">Role</TableHead>
                                             <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500">Wallet</TableHead>
                                             <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500">Balance</TableHead>
+                                            <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500">Allowance</TableHead>
                                             <TableHead className="font-black text-xs uppercase tracking-wider text-slate-500 text-right">Actions</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -508,7 +609,13 @@ export default function AdminWalletsPage() {
                                                 </TableCell>
                                             </TableRow>
                                         ) : filteredStaff.map((u: any) => (
-                                            <TableRow key={u.id} className="hover:bg-slate-50 transition-colors">
+                                            <TableRow key={u.id} className={cn("transition-colors", selectedUsers.has(u.id) ? "bg-indigo-50/50" : "hover:bg-slate-50")}>
+                                                <TableCell>
+                                                    <Checkbox
+                                                        checked={selectedUsers.has(u.id)}
+                                                        onCheckedChange={() => toggleSelection(u.id)}
+                                                    />
+                                                </TableCell>
                                                 <TableCell>
                                                     <div className="flex flex-col">
                                                         <span className="font-bold text-sm text-purple-700">
@@ -542,6 +649,17 @@ export default function AdminWalletsPage() {
                                                         <span className="font-bold text-sm text-yellow-700">{balances[u.id]} AFT</span>
                                                     ) : (
                                                         <span className="text-xs text-slate-400">-</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {u.role === 'coordinator' ? (
+                                                        allowances[u.id] ? (
+                                                            <span className="font-bold text-sm text-green-600">{allowances[u.id]} AFT</span>
+                                                        ) : (
+                                                            <span className="text-xs text-slate-400">-</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block opacity-50">N/A</span>
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-right flex items-center justify-end gap-2">

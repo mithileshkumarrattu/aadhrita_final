@@ -211,7 +211,7 @@ export default function EntryPassDashboard() {
                         />
                     </div>
                     <Button type="submit" disabled={loginLoading} className="w-full bg-red-600 hover:bg-red-700 font-bold text-white">
-                        {loginLoading ? <Lock className="animate-pulse w-4 h-4" /> : 'Sign In'}
+                        {loginLoading ? <CoinLoader size={16} /> : 'Sign In'}
                     </Button>
                     <p className="text-[10px] text-neutral-600 text-center">Credentials are created in Admin → Staff Management</p>
                 </form>
@@ -231,7 +231,10 @@ export default function EntryPassDashboard() {
                     </div>
                     <div className="flex gap-2">
                         <Button onClick={fetchData} disabled={loading} variant="outline" className="border-white/10 text-neutral-300 hover:bg-white/5">
-                            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
+                            <span className="mr-2">
+                                {loading ? <CoinLoader size={16} /> : <RefreshCw className="w-4 h-4" />}
+                            </span>
+                            Refresh
                         </Button>
                         <Button onClick={handleLogout} variant="outline" className="border-red-500/30 text-red-400 hover:bg-red-500/10">
                             <LogOut className="w-4 h-4 mr-2" /> Logout
@@ -330,7 +333,7 @@ export default function EntryPassDashboard() {
                             </thead>
                             <tbody className="divide-y divide-white/5">
                                 {loading ? (
-                                    <tr><td colSpan={7} className="p-10 text-center"><CoinLoader /></td></tr>
+                                    <tr><td colSpan={7} className="p-10 text-center"><CoinLoader text="Accessing Global Roster..." /></td></tr>
                                 ) : filteredUsers.length === 0 ? (
                                     <tr><td colSpan={7} className="p-10 text-center text-neutral-500">No records found.</td></tr>
                                 ) : (

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { provider, getTokenContract } from '@/lib/wallet-utils';
+import { getProvider, getTokenContract } from '@/lib/wallet-utils';
 import { formatEther } from 'ethers';
 
 export async function GET(request: Request) {
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         // 2. Fetch Balances
         const contract = getTokenContract(); // Read-only provider
         const tokenBalanceWei = await contract.balanceOf(address);
-        const ethBalanceWei = await provider.getBalance(address);
+        const ethBalanceWei = await getProvider().getBalance(address);
 
         return NextResponse.json({
             exists: true,

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getStaffSession, clearStaffSession } from '@/lib/staff-auth';
 import { db, COLLECTIONS, getEvents, Event } from '@/lib/db';
+import { auth } from '@/lib/firebase';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, documentId } from 'firebase/firestore';
 
 import { Button } from '@/components/ui/button';
@@ -13,9 +14,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import {
-    Loader2, LogOut, Search, Users, Coins, IdCard, FileText, CheckCircle2,
-    Shield, ExternalLink, Download, Trophy, Wallet, Eye, User
+    Shield,
+    Users,
+    User,
+    Search,
+    Download,
+    LogOut,
+    CheckCircle2,
+    Coins,
+    Wallet,
+    IdCard,
+    ExternalLink
 } from 'lucide-react';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 import * as XLSX from 'xlsx';
 
 // --- Types ---
@@ -41,19 +52,25 @@ export default function FacultyEventPage() {
     const eventId = params.id as string;
 
     const [loading, setLoading] = React.useState(true);
-    const [eventTitle, setEventTitle] = React.useState('');
     const [registrations, setRegistrations] = React.useState<any[]>([]); // All enriched regs
     const [filteredRegs, setFilteredRegs] = React.useState<any[]>([]); // Filtered list
+    const [currentEvent, setCurrentEvent] = React.useState<any | null>(null);
+    const [eventTitle, setEventTitle] = React.useState("Loading...");
     const [search, setSearch] = React.useState('');
     const [stats, setStats] = React.useState({ total: 0, paid: 0, distinct: 0 });
 
-    const [walletBalance, setWalletBalance] = React.useState<string>('0');
+    const [allowanceBalance, setAllowanceBalance] = React.useState<string>('0');
     const [walletAddress, setWalletAddress] = React.useState<string | null>(null);
-    const [rewardAmount, setRewardAmount] = React.useState('10');
+    const [convenerAddress, setConvenerAddress] = React.useState<string | null>(null);
+    const [extraRewardAmounts, setExtraRewardAmounts] = React.useState<Record<string, string>>({});
     const [actionLoading, setActionLoading] = React.useState<string | null>(null);
+    const [eventCustomFields, setEventCustomFields] = React.useState<any[]>([]);
 
     // Filter State
     const [showPending, setShowPending] = React.useState(false);
+
+    // Global Settings
+    const [rewardEnabled, setRewardEnabled] = React.useState(false);
 
     // --- Data Enrichment ---
     const enrichRegistrations = async (rawRegs: any[]) => {
@@ -82,6 +99,12 @@ export default function FacultyEventPage() {
             if (team.memberIds && Array.isArray(team.memberIds)) {
                 team.memberIds.forEach((uid: string) => userIds.add(uid));
             }
+            // ALSO check 'members' array of objects if it exists
+            if (team.members && Array.isArray(team.members)) {
+                team.members.forEach((m: any) => {
+                    if (m.userId) userIds.add(m.userId);
+                });
+            }
         });
 
         const allUserIds = Array.from(userIds);
@@ -105,9 +128,8 @@ export default function FacultyEventPage() {
 
             let enrichedMembers: any[] = [];
             if (teamDetails && teamDetails.members) {
-                // Critical Fix: Only map members who actually established a SUCCESSFUL registration for THIS team
+                // Return all members of the team. If the team is being rendered, it means at least one person paid.
                 enrichedMembers = teamDetails.members
-                    .filter((m: any) => rawRegs.some(r => r.userId === m.userId && r.teamId === teamDetails.teamId))
                     .map((m: any) => {
                         const p = m.userId ? userProfilesMap[m.userId] : null;
                         return { ...m, profile: p };
@@ -133,16 +155,17 @@ export default function FacultyEventPage() {
         });
     };
 
-    const fetchWalletBalance = async (sid: string) => {
+    const fetchAllowanceBalance = async (sid: string, cId: string) => {
         try {
-            const res = await fetch(`/api/wallet/balance?userId=${sid}&collectionName=staff_credentials`);
+            const res = await fetch(`/api/wallet/allowance?ownerId=${cId}&spenderId=${sid}`);
             const data = await res.json();
-            if (data.exists) {
-                setWalletBalance(parseFloat(data.balance).toFixed(2));
-                setWalletAddress(data.address);
+            if (data.success) {
+                setAllowanceBalance(parseFloat(data.allowance).toFixed(2));
+                setWalletAddress(data.spender);
+                setConvenerAddress(data.owner);
             }
         } catch (error) {
-            console.error("Failed to fetch wallet balance", error);
+            console.error("Failed to fetch allowance balance", error);
         }
     };
 
@@ -161,10 +184,33 @@ export default function FacultyEventPage() {
             }
 
             try {
-                const allEvents = await getEvents();
+                const allEvents = await getEvents(undefined, undefined, true);
                 const event = allEvents.find(e => e.id === eventId);
+                setCurrentEvent(event || null);
                 setEventTitle(event ? event.title : "Event ID: " + eventId);
-                await fetchWalletBalance(session.id);
+
+                const convQuery = await getDocs(query(collection(db, 'staff_credentials'), where('role', '==', 'convener')));
+                let cId = '';
+                if (!convQuery.empty) {
+                    cId = convQuery.docs[0].id;
+                }
+
+                if (cId) {
+                    await fetchAllowanceBalance(session.id, cId);
+                }
+
+                if (event && event.formConfig?.customFields) {
+                    setEventCustomFields(event.formConfig.customFields);
+                }
+
+                // Fetch Global Settings for Reward Toggle
+                const systemRes = await fetch('/api/admin/system');
+                if (systemRes.ok) {
+                    const systemData = await systemRes.json();
+                    if (systemData.success && systemData.settings) {
+                        setRewardEnabled(systemData.settings.rewardEnabled === true);
+                    }
+                }
             } catch (error) {
                 console.error("Init Error", error);
             }
@@ -178,7 +224,7 @@ export default function FacultyEventPage() {
             try {
                 let rawRegs = snapshot.docs
                     .map(doc => ({ id: doc.id, ...doc.data() } as any))
-                    .filter(r => r.paymentStatus === 'success');
+                    .filter(r => r.paymentStatus === 'success' || r.paymentStatus === 'paid');
 
                 if (rawRegs.length === 0) {
                     setRegistrations([]);
@@ -211,11 +257,36 @@ export default function FacultyEventPage() {
                 setRegistrations(enriched);
                 setFilteredRegs(enriched);
 
-                const paidCount = enriched.filter(r => r.paymentStatus === 'success').length;
                 const distinctUsers = new Set(enriched.map(r => r.userId)).size;
+
+                // For accurate stat counting, we need to apply the same grouping logic we use for displayList
+                const seenTeamsForStats = new Set();
+                const legacyTeamMapForStats: Record<string, any[]> = {};
+                let paidGroupsOrSolosCount = 0;
+
+                enriched.filter(r => r.paymentStatus === 'success' || r.paymentStatus === 'paid').forEach(r => {
+                    if (r.teamId) {
+                        const tId = String(r.teamId).trim();
+                        if (!seenTeamsForStats.has(tId)) {
+                            seenTeamsForStats.add(tId);
+                            paidGroupsOrSolosCount++;
+                        }
+                    } else if (r.responses?.teamName) {
+                        const tName = String(r.responses.teamName).trim().toLowerCase();
+                        if (!legacyTeamMapForStats[tName]) {
+                            legacyTeamMapForStats[tName] = [];
+                            paidGroupsOrSolosCount++;
+                        }
+                        legacyTeamMapForStats[tName].push(r);
+                    } else {
+                        // Solo
+                        paidGroupsOrSolosCount++;
+                    }
+                });
+
                 setStats({
-                    total: enriched.length,
-                    paid: paidCount,
+                    total: rawRegs.length, // Raw total registrations
+                    paid: paidGroupsOrSolosCount, // This correctly reflects distinct entities
                     distinct: distinctUsers
                 });
 
@@ -275,17 +346,27 @@ export default function FacultyEventPage() {
             "Email": r.display.email,
             "Gender": r.display.gender,
             "Payment Status": r.paymentStatus,
-            "Role": r.role || 'Individual',
-            "Team ID": r.teamId || '-',
-            "Team Name": r.teamDetails?.teamName || r.responses?.teamName || '-',
+            "Role": currentEvent?.maxTeamSize === 1 ? 'Individual' : (r.role || 'Individual'),
+            "Team ID": currentEvent?.maxTeamSize === 1 ? '-' : (r.teamId || '-'),
+            "Team Name": currentEvent?.maxTeamSize === 1 ? '-' : (r.teamDetails?.teamName || r.responses?.teamName || '-'),
             "PPT URL": r.teamDetails?.pptUrl || r.responses?.pptUrl || '-',
             "Team Members": r.teamDetails?.members?.map((m: any) => `${m.name} (${m.regNo})`).join(', ') || '-',
             "ID Card URL": r.display.idCard || 'Not Uploaded',
             "Created At": r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString() : new Date().toLocaleDateString()
         }));
 
+        // Flatten custom responses into columns
+        const excelData = data.map((item, idx) => {
+            const reg = filteredRegs[idx];
+            const custom: any = {};
+            eventCustomFields.forEach(f => {
+                custom[f.label] = reg.responses?.[f.id] || '-';
+            });
+            return { ...item, ...custom };
+        });
+
         const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet(data);
+        const ws = XLSX.utils.json_to_sheet(excelData);
         XLSX.utils.book_append_sheet(wb, ws, "Registrations");
         XLSX.writeFile(wb, `${eventTitle.replace(/[^a-z0-9]/gi, '_')}_Detailed_Report.xlsx`);
         toast.success("Detailed report exported successfully");
@@ -298,113 +379,185 @@ export default function FacultyEventPage() {
 
     const displayList = React.useMemo(() => {
         let list = registrations.filter(r => r.paymentStatus === 'success');
+        const isSoloEvent = currentEvent?.maxTeamSize === 1;
 
-        // Remove duplicate teams if a user accidentally paid twice for the same team
-        const seenTeams = new Set();
-        // Fallback for legacy teams without 'teamId' but sharing a 'responses.teamName'
-        const legacyTeamMap: Record<string, any[]> = {};
+        if (isSoloEvent) {
+            // Simple search for solo events
+            if (search) {
+                const lowerSearch = search.toLowerCase();
+                list = list.filter(r =>
+                    r.display?.name?.toLowerCase().includes(lowerSearch) ||
+                    r.display?.regNo?.toLowerCase().includes(lowerSearch) ||
+                    r.display?.phone?.includes(lowerSearch) ||
+                    r.display?.college?.toLowerCase().includes(lowerSearch)
+                );
+            }
+            return list.sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        }
 
-        list = list.filter(r => {
-            if (r.teamId) {
-                if (seenTeams.has(r.teamId)) return false;
-                seenTeams.add(r.teamId);
-                return true;
+        // --- ROBUST GROUPING FOR TEAMS ---
+        const teamGroups = new Map<string, any[]>(); // Key: Normalized TeamID or TeamName
+        const solos: any[] = [];
+
+        list.forEach(reg => {
+            const tId = reg.teamId ? String(reg.teamId).trim().toUpperCase() : null;
+            const tName = reg.responses?.teamName ? String(reg.responses.teamName).trim().toUpperCase() : null;
+            const groupKey = tId || tName;
+
+            if (groupKey) {
+                if (!teamGroups.has(groupKey)) teamGroups.set(groupKey, []);
+                teamGroups.get(groupKey)?.push(reg);
+            } else {
+                solos.push(reg);
             }
-            // If they have a teamName but no teamId, group them virtually
-            if (r.responses?.teamName) {
-                const tName = r.responses.teamName.trim().toLowerCase();
-                if (!legacyTeamMap[tName]) legacyTeamMap[tName] = [];
-                legacyTeamMap[tName].push(r);
-                return false; // Hide from main list, will be re-injected as a grouped entity
-            }
-            return true;
         });
 
-        // Re-inject legacy grouped teams
-        Object.entries(legacyTeamMap).forEach(([tName, members]) => {
-            // Create a virtual team leader from the first member
-            const leader = members.find(m => m.role === 'Leader') || members[0];
-            const virtualTeamReg = {
-                ...leader,
-                id: leader.id || `virtual_${tName}`,
-                teamId: `virtual_${tName}`,
+        const groupedList: any[] = [...solos];
+
+        teamGroups.forEach((members, groupKey) => {
+            // Find a leader or just pick the first one as primary
+            const primaryReg = members.find(m => m.role === 'Leader') || members[0];
+            
+            // Merge official team members if they exist in DB but didn't come from regs list (rare but possible)
+            const officialMembers = primaryReg.teamDetails?.members || [];
+            const mergedMembersMap = new Map();
+            
+            // Add official members first
+            officialMembers.forEach((m: any) => {
+                mergedMembersMap.set(m.userId, {
+                    userId: m.userId,
+                    name: m.name,
+                    regNo: m.regNo,
+                    profile: m.profile,
+                    isFromReg: false
+                });
+            });
+
+            // Override/Add from actual paid registrations (the source of truth for payment)
+            members.forEach(m => {
+                mergedMembersMap.set(m.userId, {
+                    userId: m.userId,
+                    name: m.display.name,
+                    regNo: m.display.regNo,
+                    profile: m.fullProfile,
+                    isFromReg: true,
+                    regId: m.id, // CRITICAL: This is the registration doc ID for rewarding
+                    attendance: m.attendance,
+                    rewards: m.rewards
+                });
+            });
+
+            const mergedMembers = Array.from(mergedMembersMap.values());
+
+            groupedList.push({
+                ...primaryReg,
+                teamId: primaryReg.teamId || `group_${groupKey}`,
                 teamDetails: {
-                    teamName: leader.responses?.teamName || tName,
-                    leaderId: leader.userId,
-                    members: members.map(m => ({
-                        userId: m.userId,
-                        name: m.display.name,
-                        regNo: m.display.regNo,
-                        profile: m.fullProfile,
-                        regId: m.id // Keep their actual distinct registration document ID
-                    }))
+                    ...(primaryReg.teamDetails || {}),
+                    teamName: primaryReg.teamDetails?.teamName || primaryReg.responses?.teamName || groupKey,
+                    leaderId: primaryReg.teamDetails?.leaderId || primaryReg.userId,
+                    members: mergedMembers
                 }
-            };
-            list.push(virtualTeamReg);
+            });
         });
 
+        let finalFiltered = groupedList;
         if (search) {
             const lowerSearch = search.toLowerCase();
-            list = list.filter(r =>
+            finalFiltered = finalFiltered.filter(r =>
                 r.display?.name?.toLowerCase().includes(lowerSearch) ||
                 r.display?.regNo?.toLowerCase().includes(lowerSearch) ||
                 r.display?.phone?.includes(lowerSearch) ||
                 r.display?.college?.toLowerCase().includes(lowerSearch) ||
-                r.teamDetails?.teamName?.toLowerCase().includes(lowerSearch)
+                r.teamDetails?.teamName?.toLowerCase().includes(lowerSearch) ||
+                r.teamDetails?.members?.some((m: any) => 
+                    m.name?.toLowerCase().includes(lowerSearch) || 
+                    m.regNo?.toLowerCase().includes(lowerSearch)
+                )
             );
         }
 
-        // Sort to ensure consistent rendering
-        list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
-        return list;
-    }, [registrations, search]);
+        return finalFiltered.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    }, [registrations, search, currentEvent]);
 
     const handleIndividualTransfer = async (
         regDocId: string,
         userId: string,
         walletAddress: string | undefined,
         name: string,
-        isTeamMember: boolean
+        isTeamMember: boolean,
+        customAmount?: number
     ) => {
-        if (!confirm(`Mark ${name} as PRESENT and send ${rewardAmount} AFT?`)) return;
+        const amt = customAmount || 10;
+        if (!confirm(`Send ${amt} AFT to ${name}?`)) return;
         const session = getStaffSession();
         if (!session?.id) return;
 
-        if (!walletAddress) {
-            toast.error("User has no wallet address.");
+        if (!walletAddress || !convenerAddress) {
+            toast.error("Missing wallet or Convener configuration.");
             return;
         }
 
-        setActionLoading(userId);
-        const toastId = toast.loading(`Sending ${rewardAmount} AFT to ${name}...`);
+        setActionLoading(userId + (customAmount ? '_extra' : ''));
+        const toastId = toast.loading(`Sending ${amt} AFT to ${name}...`);
 
         try {
-            const res = await fetch('/api/wallet/transfer', {
+            const token = await auth.currentUser?.getIdToken();
+            const res = await fetch('/api/wallet/transferFrom', {
                 method: 'POST',
-                body: JSON.stringify({ userId: session.id, toAddress: walletAddress, amount: Number(rewardAmount) })
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    fromAddress: convenerAddress,
+                    toAddress: walletAddress,
+                    amount: amt
+                })
             });
             const data = await res.json();
 
             if (res.ok) {
                 const regRef = doc(db, COLLECTIONS.EVENTS, eventId, 'registrations', regDocId);
-
-                if (isTeamMember) {
-                    await updateDoc(regRef, {
-                        [`attendance.${userId}`]: true
-                    });
+                const currentReg = registrations.find(r => r.id === regDocId);
+                
+                const updates: any = {};
+                
+                // Unify Attendance: Always use the map structure. 
+                // Handle legacy boolean case by overwriting with a new map.
+                if (typeof currentReg?.attendance === 'boolean') {
+                    updates['attendance'] = { [userId]: true };
                 } else {
-                    await updateDoc(regRef, {
-                        rewardStatus: 'paid',
-                        rewardAmount: Number(rewardAmount),
-                        rewardTxHash: data.txHash,
-                        rewardedAt: new Date(),
-                        attendance: true
-                    });
+                    updates[`attendance.${userId}`] = true;
                 }
 
-                toast.success(`Sent ${rewardAmount} AFT!`, { id: toastId });
-                fetchWalletBalance(session.id);
+                // Unify Rewards: Always use the map structure.
+                // Handle legacy array structure by migrating it to the mapped user's rewards.
+                const currentRewards = currentReg?.rewards || {};
+                const rewardItem = { amount: amt, txHash: data.txHash, date: new Date() };
+
+                if (Array.isArray(currentRewards)) {
+                    updates['rewards'] = { [userId]: [...currentRewards, rewardItem] };
+                } else {
+                    const existingUserRewards = currentRewards[userId] || [];
+                    updates[`rewards.${userId}`] = [...existingUserRewards, rewardItem];
+                }
+
+                // Legacy Field Fallbacks for UI synchronization
+                if (!isTeamMember) {
+                    updates['rewardStatus'] = 'paid';
+                    updates['rewardAmount'] = (Number(currentReg?.rewardAmount || 0) + amt);
+                    updates['rewardTxHash'] = data.txHash;
+                    updates['rewardedAt'] = new Date();
+                }
+
+                await updateDoc(regRef, updates);
+
+                toast.success(`Sent ${amt} AFT!`, { id: toastId });
+                setAllowanceBalance(prev => (Number(prev) - amt).toFixed(2));
+                if (customAmount) {
+                    setExtraRewardAmounts(prev => ({ ...prev, [userId]: '' }));
+                }
             } else {
                 toast.error(`Failed: ${data.error}`, { id: toastId });
             }
@@ -419,7 +572,7 @@ export default function FacultyEventPage() {
     // Paid List
     const paidList = registrations.filter(r => r.paymentStatus === 'success');
 
-    if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-zinc-500">Loading Dashboard...</div>;
+    if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><CoinLoader size={64} text="Syncing Participant Roster..." /></div>;
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white font-sans selection:bg-purple-500/30">
@@ -450,45 +603,19 @@ export default function FacultyEventPage() {
 
             <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
 
-                {/* Top Row: Stats & Wallet */}
-                <div className="grid md:grid-cols-3 gap-6">
-                    {/* 1. Stats Overview */}
-                    <Card className="bg-zinc-900/50 border-white/10 p-6 md:col-span-2">
-                        <div className="flex items-start justify-between mb-6">
-                            <div>
-                                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                                    <Trophy className="w-5 h-5 text-yellow-500" />
-                                    Event Overview
-                                </h2>
-                                <p className="text-sm text-neutral-400 mt-1">
-                                    Track registrations and verified participants in real-time.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-black/40 p-4 rounded-xl border border-white/5">
-                                <div className="text-xs text-zinc-500 font-bold uppercase mb-1">Total Individuals</div>
-                                <div className="text-3xl font-black text-white">{displayList.length}</div>
-                            </div>
-                            <div className="bg-black/40 p-4 rounded-xl border border-white/5">
-                                <div className="text-xs text-zinc-500 font-bold uppercase mb-1">Paid / Verified Teams & Solos</div>
-                                <div className="text-3xl font-black text-green-500">{paidList.length}</div>
-                            </div>
-                        </div>
-                    </Card>
-
+                {/* Top Row: Wallet */}
+                <div className="grid grid-cols-1 gap-6">
                     {/* 2. Coordinator Wallet */}
-                    <Card className="md:col-span-1 bg-zinc-900/50 border-zinc-800 p-6 flex flex-col justify-center relative overflow-hidden">
+                    <Card className="bg-zinc-900/50 border-zinc-800 p-6 flex flex-col justify-center relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl" />
                         <div className="flex flex-col gap-4 relative z-10">
                             <div>
-                                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-1 block">Coordinator Wallet</span>
+                                <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-1 block">Delegated Budget</span>
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-2">
                                         <Wallet className="w-5 h-5 text-yellow-500" />
                                         <span className="text-2xl font-mono font-bold text-white tracking-tight">
-                                            {walletBalance} <span className="text-sm text-zinc-600 font-sans">AFT</span>
+                                            {allowanceBalance} <span className="text-sm text-zinc-600 font-sans">AFT</span>
                                         </span>
                                     </div>
                                 </div>
@@ -512,18 +639,6 @@ export default function FacultyEventPage() {
                                     </Button>
                                 </div>
                             )}
-
-                            <div className="mt-2 pt-4 border-t border-white/10">
-                                <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-1 block">Reward Per User</label>
-                                <div className="relative">
-                                    <Input
-                                        value={rewardAmount}
-                                        onChange={(e) => setRewardAmount(e.target.value)}
-                                        className="h-8 bg-zinc-900 border-zinc-800 text-white font-bold pr-10 focus:ring-1 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all font-mono"
-                                    />
-                                    <span className="absolute right-3 top-2 text-xs text-zinc-500 font-bold">AFT</span>
-                                </div>
-                            </div>
                         </div>
                     </Card>
                 </div>
@@ -560,7 +675,8 @@ export default function FacultyEventPage() {
                             <div className="text-center py-20 text-neutral-500 border border-white/5 rounded-xl bg-white/5">No participants found.</div>
                         ) : (
                             displayList.map((reg: any) => {
-                                if (reg.teamId && reg.teamDetails) {
+                                const isSoloEvent = currentEvent?.maxTeamSize === 1;
+                                if (!isSoloEvent && reg.teamId && reg.teamDetails) {
                                     // TEAM CARD
                                     return (
                                         <Card key={reg.id} className="bg-zinc-900 border-white/5 p-4 md:p-6 hover:border-white/10 transition-colors group">
@@ -570,16 +686,11 @@ export default function FacultyEventPage() {
                                                         <Users className="w-4 h-4" /> {reg.teamDetails.teamName}
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-2 text-xs">
-                                                    <div className="bg-black/30 border border-white/5 px-2 py-1 rounded text-zinc-400 font-mono">
-                                                        Txn: {reg.orderId || reg.paymentId || 'N/A'}
-                                                    </div>
-                                                </div>
                                             </div>
 
                                             <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                                 {reg.teamDetails.members.map((m: any) => {
-                                                    const isAttended = reg.attendance?.[m.userId] === true;
+                                                    const isAttended = (m.attendance?.[m.userId] === true) || (reg.attendance?.[m.userId] === true) || (m.userId === reg.userId && reg.attendance === true);
                                                     return (
                                                         <div key={m.userId} className="bg-black/30 p-4 rounded-xl border border-white/5 flex flex-col gap-3 relative">
                                                             {m.userId === reg.teamDetails.leaderId && (
@@ -587,32 +698,85 @@ export default function FacultyEventPage() {
                                                                     Leader
                                                                 </div>
                                                             )}
-                                                            <div>
+                                                            <div className="mb-2">
                                                                 <h4 className="font-bold text-white text-sm line-clamp-1">{m.name}</h4>
-                                                                <div className="text-xs text-zinc-500 font-mono mt-0.5">{m.regNo}</div>
+                                                                <div className="text-[10px] text-zinc-500 font-mono mt-0.5 mb-2">{m.regNo?.replace('GOOGLE_USER', 'N/A')}</div>
+
+                                                                <div className="space-y-1.5 border-t border-white/5 pt-2">
+                                                                    <div className="flex justify-between items-center text-[10px]">
+                                                                        <span className="text-zinc-500 uppercase font-bold">Phone</span>
+                                                                        <span className="text-zinc-300 font-mono">{m.profile?.mobileNumber || 'N/A'}</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between items-center text-[10px]">
+                                                                        <span className="text-zinc-500 uppercase font-bold">College</span>
+                                                                        <span className="text-zinc-300 truncate max-w-[100px] text-right" title={m.profile?.collegeName}>{m.profile?.collegeName || 'N/A'}</span>
+                                                                    </div>
+                                                                </div>
                                                             </div>
 
-                                                            <div className="flex items-center gap-2 mt-1">
-                                                                {(m.profile?.idCardUrl || reg.display.idCard) && (
-                                                                    <a href={m.profile?.idCardUrl || reg.display.idCard} target="_blank" className="flex items-center gap-1 text-[9px] font-bold uppercase text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 px-1.5 py-0.5 rounded transition-colors w-fit border border-blue-500/20">
+                                                            <div className="flex flex-wrap items-center gap-2 mt-1 mb-2">
+                                                                {(m.profile?.idCardUrl || reg.display?.idCard) && (
+                                                                    <a href={m.profile?.idCardUrl || reg.display?.idCard} target="_blank" className="flex items-center gap-1 text-[9px] font-bold uppercase text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 px-1.5 py-0.5 rounded transition-colors w-fit border border-blue-500/20">
                                                                         <IdCard className="w-3 h-3" /> ID
                                                                     </a>
                                                                 )}
                                                             </div>
 
+                                                            {/* Custom Fields */}
+                                                            {eventCustomFields.length > 0 && reg.responses && (
+                                                                <div className="space-y-2 mt-1 mb-3 bg-white/5 p-2.5 rounded-lg border border-white/10">
+                                                                    {eventCustomFields.map(field => {
+                                                                        const val = reg.responses?.[field.id];
+                                                                        if (!val) return null;
+                                                                        const isUrl = String(val).startsWith('http');
+                                                                        return (
+                                                                            <div key={field.id} className="text-[9px]">
+                                                                                <span className="text-zinc-500 uppercase font-black block leading-none mb-1.5 text-[8px] tracking-tight">{field.label}</span>
+                                                                                {isUrl ? (
+                                                                                    <a href={val} target="_blank" rel="noopener noreferrer" className="text-indigo-400 font-mono flex items-center gap-1 hover:text-indigo-300 break-all underline decoration-indigo-400/30">
+                                                                                        <ExternalLink className="w-2 h-2" /> Link
+                                                                                    </a>
+                                                                                ) : (
+                                                                                    <span className="text-zinc-300 block leading-tight">{val}</span>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+
                                                             {isAttended ? (
-                                                                <div className="bg-green-500/10 border border-green-500/30 text-green-400 h-8 w-full rounded-md font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1.5 mt-auto">
-                                                                    <CheckCircle2 className="w-3 h-3" /> PRESENT
+                                                                <div className="space-y-2 mt-auto">
+                                                                    <div className="bg-green-500/10 border border-green-500/30 text-green-400 h-8 w-full rounded-md font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1.5">
+                                                                        <CheckCircle2 className="w-3 h-3" /> PRESENT
+                                                                    </div>
+                                                                    <div className="flex gap-2 items-center bg-black/40 p-2 rounded-xl border border-white/5 shadow-inner">
+                                                                        <Input
+                                                                            type="number"
+                                                                            placeholder="AFT"
+                                                                            className="h-8 bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600 text-[11px] w-14 px-2 font-mono focus:ring-1 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all"
+                                                                            value={extraRewardAmounts[m.userId] || ''}
+                                                                            onChange={(e) => setExtraRewardAmounts(prev => ({ ...prev, [m.userId]: e.target.value }))}
+                                                                        />
+                                                                        <Button
+                                                                            size="sm"
+                                                                            onClick={() => handleIndividualTransfer(m.regId || reg.id, m.userId, m.profile?.walletAddress, m.name, true, Number(extraRewardAmounts[m.userId]))}
+                                                                            disabled={actionLoading === m.userId + '_extra' || !extraRewardAmounts[m.userId] || !rewardEnabled}
+                                                                            className="h-8 flex-1 bg-yellow-500 hover:bg-yellow-400 text-black font-black text-[10px] uppercase tracking-tighter shadow-lg shadow-yellow-900/10 active:scale-95 transition-transform"
+                                                                        >
+                                                                            {actionLoading === m.userId + '_extra' ? <CoinLoader size={12} /> : 'Reward'}
+                                                                        </Button>
+                                                                    </div>
                                                                 </div>
                                                             ) : (
                                                                 <Button
                                                                     size="sm"
                                                                     onClick={() => handleIndividualTransfer(m.regId || reg.id, m.userId, m.profile?.walletAddress, m.name, true)}
-                                                                    disabled={actionLoading === m.userId || !m.profile?.walletAddress}
-                                                                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold h-8 text-[10px] shadow-lg shadow-green-900/20 mt-auto"
+                                                                    disabled={actionLoading === m.userId || !m.profile?.walletAddress || !rewardEnabled}
+                                                                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold h-8 text-[10px] shadow-lg shadow-green-900/20 mt-auto disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 >
-                                                                    {actionLoading === m.userId ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Coins className="w-3 h-3 mr-1" />}
-                                                                    {m.profile?.walletAddress ? `Present (${rewardAmount} AFT)` : 'No Wallet'}
+                                                                    {actionLoading === m.userId ? <CoinLoader size={12} className="mr-1" /> : <Coins className="w-3 h-3 mr-1" />}
+                                                                    {m.profile?.walletAddress ? (rewardEnabled ? `Present (10 AFT)` : 'Claims Disabled') : 'No Wallet'}
                                                                 </Button>
                                                             )}
                                                         </div>
@@ -623,7 +787,7 @@ export default function FacultyEventPage() {
                                     );
                                 } else {
                                     // SOLO CARD
-                                    const isAttended = reg.rewardStatus === 'paid' || reg.attendance === true;
+                                    const isAttended = reg.rewardStatus === 'paid' || reg.attendance === true || (typeof reg.attendance === 'object' && reg.attendance && (reg.attendance as any)[reg.userId] === true);
                                     return (
                                         <Card key={reg.id} className="bg-zinc-900 border-white/5 p-4 md:p-6 hover:border-white/10 transition-colors group flex flex-col md:flex-row gap-6 items-center">
                                             {/* Personal Identity */}
@@ -655,24 +819,78 @@ export default function FacultyEventPage() {
                                                         )}
                                                     </div>
                                                 </div>
+
+                                                {/* Solo Custom Fields */}
+                                                {eventCustomFields.length > 0 && reg.responses && (
+                                                    <div className="mt-6 space-y-4">
+                                                        <div className="flex items-center gap-2 text-zinc-500 mb-2">
+                                                            <div className="h-px flex-1 bg-white/5" />
+                                                            <span className="text-[10px] font-bold uppercase tracking-widest">Additional Information</span>
+                                                            <div className="h-px flex-1 bg-white/5" />
+                                                        </div>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                            {eventCustomFields.map(field => {
+                                                                const val = reg.responses?.[field.id];
+                                                                if (!val) return null;
+                                                                const isUrl = String(val).startsWith('http');
+
+                                                                return (
+                                                                    <div key={field.id} className="bg-white/5 p-3 rounded-xl border border-white/10 hover:bg-white/[0.07] transition-colors">
+                                                                        <span className="text-zinc-500 uppercase font-black block mb-2 text-[9px] tracking-wider leading-none">{field.label}</span>
+                                                                        {isUrl ? (
+                                                                            <a
+                                                                                href={val}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className="text-indigo-400 font-mono text-xs break-all hover:text-indigo-300 flex items-center gap-1.5 group"
+                                                                            >
+                                                                                <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                                                                                <span className="underline decoration-indigo-400/30 group-hover:decoration-indigo-300">Open Link</span>
+                                                                            </a>
+                                                                        ) : (
+                                                                            <span className="text-zinc-200 text-xs font-medium leading-relaxed">{val}</span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Action Column */}
-                                            <div className="w-full md:w-64 border-t md:border-t-0 md:border-l border-white/5 pt-4 md:pt-0 md:pl-6 flex flex-col justify-center">
+                                            <div className="w-full md:w-72 border-t md:border-t-0 md:border-l border-white/5 pt-4 md:pt-0 md:pl-6 flex flex-col justify-center">
                                                 {isAttended ? (
-                                                    <div className="bg-green-500/10 border border-green-500/30 text-green-400 h-10 w-full rounded-lg font-bold uppercase tracking-widest text-xs flex items-center justify-center gap-2">
-                                                        <CheckCircle2 className="w-4 h-4" />
-                                                        PAID & PRESENT
+                                                    <div className="space-y-3">
+                                                        <div className="bg-green-500/10 border border-green-500/30 text-green-400 h-10 w-full rounded-lg font-bold uppercase tracking-widest text-xs flex items-center justify-center gap-2">
+                                                            <CheckCircle2 className="w-4 h-4" /> PAID & PRESENT
+                                                        </div>
+                                                        <div className="flex gap-2 items-center bg-black/40 p-2.5 rounded-xl border border-white/5 shadow-inner">
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="Qty"
+                                                                className="h-10 bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600 text-sm w-20 font-mono focus:ring-1 focus:ring-yellow-500/50 focus:border-yellow-500/50 transition-all"
+                                                                value={extraRewardAmounts[reg.userId] || ''}
+                                                                onChange={(e) => setExtraRewardAmounts(prev => ({ ...prev, [reg.userId]: e.target.value }))}
+                                                            />
+                                                            <Button
+                                                                onClick={() => handleIndividualTransfer(reg.id, reg.userId, reg.fullProfile?.walletAddress, reg.display.name, false, Number(extraRewardAmounts[reg.userId]))}
+                                                                disabled={actionLoading === reg.userId + '_extra' || !extraRewardAmounts[reg.userId] || !rewardEnabled}
+                                                                className="h-10 flex-1 bg-yellow-500 hover:bg-yellow-400 text-black font-black uppercase text-xs shadow-lg shadow-yellow-900/10 active:scale-95 transition-transform"
+                                                            >
+                                                                {actionLoading === reg.userId + '_extra' ? <CoinLoader size={16} /> : 'Send Extra Reward'}
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col gap-2">
                                                         <Button
                                                             onClick={() => handleIndividualTransfer(reg.id, reg.userId, reg.fullProfile?.walletAddress, reg.display.name, false)}
-                                                            disabled={actionLoading === reg.userId || !reg.fullProfile?.walletAddress}
-                                                            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold h-10 shadow-lg shadow-green-900/20 text-xs"
+                                                            disabled={actionLoading === reg.userId || !reg.fullProfile?.walletAddress || !rewardEnabled}
+                                                            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold h-10 shadow-lg shadow-green-900/20 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                                                         >
-                                                            {actionLoading === reg.userId ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Coins className="w-4 h-4 mr-2" />}
-                                                            Mark Present ({rewardAmount} AFT)
+                                                            {actionLoading === reg.userId ? <CoinLoader size={16} className="mr-2" /> : <Coins className="w-4 h-4 mr-2" />}
+                                                            {rewardEnabled ? `Mark Present (10 AFT)` : 'Claims Disabled'}
                                                         </Button>
                                                         {!reg.fullProfile?.walletAddress && (
                                                             <p className="text-[10px] text-red-500 text-center font-bold">No Wallet Found</p>

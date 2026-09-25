@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { AAHT_SYMBOL } from '@/lib/aaht';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, Copy, Check, QrCode } from 'lucide-react';
@@ -100,7 +101,7 @@ export function CustodialWallet({ hidePayButton = false, overrideUserId }: Custo
 
             <div className="mb-6 relative z-10">
                 <div className="text-5xl font-black text-white flex items-baseline gap-2 mb-6">
-                    {balance} <span className="text-xl font-bold text-zinc-600">AFT</span>
+                    {balance} <span className="text-xl font-bold text-zinc-600">{AAHT_SYMBOL}</span>
                 </div>
 
                 <div className="flex flex-col gap-3">

@@ -7,11 +7,12 @@ import { EVENTS_DATA } from '@/lib/constants';
 import { RegistrationService } from '@/lib/services/registrationService';
 import { EventService } from '@/lib/services/eventService';
 import { DynamicRegistrationForm } from '@/components/events/DynamicRegistrationForm';
-import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Cinzel } from 'next/font/google';
 import { cn } from '@/lib/utils';
 import { UserRegistration, EventRegistration } from '@/lib/db';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 const cinzel = Cinzel({ subsets: ['latin'] });
 
@@ -90,7 +91,7 @@ export default function EventRegisterPage() {
     if (loading || authLoading) {
         return (
             <div className="min-h-screen bg-[#0B0C10] flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
+                <CoinLoader size={48} text="Syncing Event Records..." />
             </div>
         );
     }

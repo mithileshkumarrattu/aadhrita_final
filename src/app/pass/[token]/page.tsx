@@ -4,7 +4,8 @@ import * as React from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/db';
 import { QRCodeSVG } from 'qrcode.react';
-import { Loader2, Shield, BedDouble, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Shield, BedDouble, AlertTriangle, RefreshCw } from 'lucide-react';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 import { Cinzel } from 'next/font/google';
 import { cn } from '@/lib/utils';
 
@@ -62,7 +63,7 @@ export default function HackathonPassPage({ params }: { params: Promise<{ token:
     if (loading) {
         return (
             <div className="min-h-screen bg-black flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-yellow-500 animate-spin" />
+                <CoinLoader text="Verifying Pass..." />
             </div>
         );
     }

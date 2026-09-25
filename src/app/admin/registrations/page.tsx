@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { db, Event, EventRegistration } from '@/lib/db';
 import { doc, getDoc, collection, getDocs, orderBy, query, limit, onSnapshot, QuerySnapshot, DocumentData } from 'firebase/firestore';
-import { Loader2, Download, RefreshCw, FileText, Filter } from 'lucide-react';
+import { Download, RefreshCw, FileText, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { EventService } from '@/services/EventService';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 export default function AdminRegistrationsPage() {
     const { user } = useAuth();
@@ -219,7 +220,7 @@ export default function AdminRegistrationsPage() {
         document.body.removeChild(link);
     };
 
-    if (initLoading) return <div className="p-8 flex justify-center"><Loader2 className="animate-spin" /></div>;
+    if (initLoading) return <div className="p-8 flex justify-center"><CoinLoader size={48} text="Initializing Master Roster..." /></div>;
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8 min-h-screen bg-slate-50/50">

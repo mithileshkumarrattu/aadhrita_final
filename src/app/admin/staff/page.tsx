@@ -11,6 +11,9 @@ import { getEvents } from '@/lib/db';
 import { StaffCredential } from '@/lib/db';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import * as xlsx from 'xlsx';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 export default function AdminStaffPage() {
     const router = useRouter();
@@ -21,7 +24,7 @@ export default function AdminStaffPage() {
     // Form State
     const [username, setUsername] = React.useState('');
     const [password, setPassword] = React.useState('');
-    const [role, setRole] = React.useState<'security' | 'coordinator' | 'hackathon_coordinator' | 'entrypass_viewer' | 'registrations_viewer'>('security');
+    const [role, setRole] = React.useState<'security' | 'coordinator' | 'hackathon_coordinator' | 'entrypass_viewer' | 'registrations_viewer' | 'convener' | 'onspot_coordinator' | 'fyfp_coordinator' | 'merchandise' | 'campus_manager'>('security');
     const [assignedEventId, setAssignedEventId] = React.useState('');
 
     const fetchData = React.useCallback(async () => {
@@ -74,6 +77,7 @@ export default function AdminStaffPage() {
                     body: JSON.stringify({
                         userId: staffRef.id,
                         email: username, // Use username as email identifier for staff
+                        role: role, // Pass role for special logic (e.g. shared convener wallet)
                         collectionName: 'staff_credentials' // Matches COLLECTIONS.STAFF value
                     })
                 });
@@ -113,6 +117,58 @@ export default function AdminStaffPage() {
         }
     };
 
+    const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setLoading(true);
+        try {
+            const data = await file.arrayBuffer();
+            const workbook = xlsx.read(data);
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = xlsx.utils.sheet_to_json<any>(sheet, { header: 1 });
+
+            // Assuming first column has names. Skip header row if it exists.
+            const namesToCreate = jsonData
+                .map(row => String(row[0] || '').trim())
+                .filter((name, index) => name.length > 0 && !(index === 0 && name.toLowerCase().includes('name')));
+
+            if (namesToCreate.length === 0) {
+                toast.error("No valid names found in the first column of the Excel file.");
+                setLoading(false);
+                return;
+            }
+
+            toast.info(`Found ${namesToCreate.length} names. Processing...`);
+
+            const res = await fetch('/api/admin/staff/bulk-upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ names: namesToCreate })
+            });
+
+            if (!res.ok) throw new Error(await res.text());
+
+            const { staff } = await res.json();
+
+            // Build and trigger CSV download
+            const worksheet = xlsx.utils.json_to_sheet(staff);
+            const newWorkbook = xlsx.utils.book_new();
+            xlsx.utils.book_append_sheet(newWorkbook, worksheet, "Credentials");
+            xlsx.writeFile(newWorkbook, "Volunteer_Credentials.xlsx");
+
+            toast.success(`Successfully created ${staff.length} credentials and downloaded Excel file!`);
+            fetchData();
+
+        } catch (err: any) {
+            console.error(err);
+            toast.error("Failed to process bulk upload: " + err.message);
+        } finally {
+            if (e.target) e.target.value = ''; // reset input
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-black text-zinc-100 p-8 pt-20">
             <div className="max-w-6xl mx-auto space-y-8">
@@ -135,11 +191,25 @@ export default function AdminStaffPage() {
                     {/* Create New Staff Form */}
                     <Card className="bg-zinc-900/50 border-zinc-800 lg:col-span-1 h-fit">
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-xl">
-                                <UserPlus className="w-5 h-5 text-yellow-500" />
-                                Add New Staff
+                            <CardTitle className="flex items-center gap-2 text-xl justify-between">
+                                <div className="flex items-center gap-2">
+                                    <UserPlus className="w-5 h-5 text-yellow-500" />
+                                    Add New Staff
+                                </div>
+                                <div className="relative">
+                                    <Input
+                                        type="file"
+                                        accept=".xlsx, .xls"
+                                        className="absolute inset-0 opacity-0 cursor-pointer w-[120px]"
+                                        onChange={handleBulkUpload}
+                                        disabled={loading}
+                                    />
+                                    <Button variant="outline" size="sm" className="bg-zinc-800 border-zinc-700 pointer-events-none text-xs text-yellow-500">
+                                        Bulk Upload
+                                    </Button>
+                                </div>
                             </CardTitle>
-                            <CardDescription>Assign roles and generate credentials.</CardDescription>
+                            <CardDescription>Assign roles and generate credentials, or bulk upload volunteers via Excel.</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <form onSubmit={handleCreate} className="space-y-4">
@@ -175,10 +245,15 @@ export default function AdminStaffPage() {
                                         </SelectTrigger>
                                         <SelectContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
                                             <SelectItem value="security">Security Guard</SelectItem>
-                                            <SelectItem value="coordinator">Event Coordinator</SelectItem>
+                                            <SelectItem value="coordinator">Event Coordinator/Faculty</SelectItem>
                                             <SelectItem value="hackathon_coordinator">Hackathon Coordinator</SelectItem>
                                             <SelectItem value="entrypass_viewer">Entry Pass Viewer</SelectItem>
-                                            <SelectItem value="registrations_viewer">Master Registrations Viewer</SelectItem>
+                                            <SelectItem value="registrations_viewer">Registration Viewer (Faculty Portal)</SelectItem>
+                                            <SelectItem value="convener">Convener</SelectItem>
+                                            <SelectItem value="onspot_coordinator">On-Spot Event Coordinator</SelectItem>
+                                            <SelectItem value="fyfp_coordinator">FYFP Event Coordinator</SelectItem>
+                                            <SelectItem value="merchandise">AFT Merchandise (Receiver)</SelectItem>
+                                            <SelectItem value="campus_manager">Campus Stats Manager (Entry/Kit Dash)</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -236,31 +311,33 @@ export default function AdminStaffPage() {
                                         <div className="p-8 text-center text-zinc-500 italic">No staff members found.</div>
                                     ) : (
                                         staffList.map((staff) => (
-                                            <div key={staff.id} className="grid grid-cols-12 p-3 items-center hover:bg-white/5 transition-colors">
-                                                <div className="col-span-3 font-medium text-white flex items-center gap-2">
+                                            <div key={staff.id} className="grid grid-cols-12 p-3 text-sm items-center border-b border-zinc-800 hover:bg-zinc-900/30 transition-colors">
+                                                <div className="col-span-3 font-medium text-zinc-300 flex items-center gap-2">
                                                     {staff.role === 'security' ? <Shield className="w-3 h-3 text-green-500" /> :
                                                         staff.role === 'hackathon_coordinator' ? <Users className="w-3 h-3 text-yellow-500" /> :
                                                             <Lock className="w-3 h-3 text-purple-500" />}
                                                     {staff.username}
                                                 </div>
                                                 <div className="col-span-3">
-                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${staff.role === 'security'
-                                                        ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                                                        : staff.role === 'hackathon_coordinator'
-                                                            ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-                                                            : staff.role === 'entrypass_viewer'
-                                                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                                                : staff.role === 'registrations_viewer'
-                                                                    ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
-                                                                    : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                                                        }`}>
-                                                        {
-                                                            staff.role === 'hackathon_coordinator' ? 'Hackathon Coord'
-                                                                : staff.role === 'entrypass_viewer' ? 'Entry Pass'
-                                                                    : staff.role === 'registrations_viewer' ? 'Master Reg Views'
-                                                                        : staff.role
-                                                        }
-                                                    </span>
+                                                    <Badge variant="outline" className={cn(
+                                                        "text-[10px] h-5 uppercase tracking-wider font-bold",
+                                                        staff.role === 'convener' ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                                            staff.role === 'coordinator' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+                                                                staff.role === 'onspot_coordinator' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                                                                    staff.role === 'fyfp_coordinator' ? "bg-pink-500/10 text-pink-500 border-pink-500/20" :
+                                                                    staff.role === 'merchandise' ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20" :
+                                                                        staff.role === 'campus_manager' ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" :
+                                                                        staff.role === 'registrations_viewer' ? "bg-purple-500/10 text-purple-500 border-purple-500/20" :
+                                                                            "bg-zinc-800 text-zinc-400 border-zinc-700"
+                                                    )}>
+                                                        {staff.role === 'registrations_viewer' ? 'REG VIEWER' :
+                                                            staff.role === 'coordinator' ? 'COORD/FACULTY' :
+                                                                staff.role === 'onspot_coordinator' ? 'ON-SPOT' :
+                                                                    staff.role === 'fyfp_coordinator' ? 'FYFP' :
+                                                                        staff.role === 'merchandise' ? 'MERCHANDISE' :
+                                                                            staff.role === 'campus_manager' ? 'CAMPUS STATS' :
+                                                                            staff.role.toUpperCase().replace('_', ' ')}
+                                                    </Badge>
                                                 </div>
                                                 <div className="col-span-4 text-xs text-zinc-400">
                                                     {staff.role === 'coordinator' ? (
@@ -290,10 +367,10 @@ export default function AdminStaffPage() {
                                 </div>
                             </div>
                         </CardContent>
-                    </Card>
+                    </Card >
 
-                </div>
-            </div>
-        </div>
+                </div >
+            </div >
+        </div >
     );
 }

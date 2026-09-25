@@ -82,23 +82,10 @@ export default function EventDetailsPage() {
                     if (!teamSnap.empty) {
                         const teamData = { id: teamSnap.docs[0].id, ...teamSnap.docs[0].data() } as Team;
 
-                        // Ensure we only show team members who ACTUALLY paid
-                        const qTeamRegs = query(
-                            collection(db, COLLECTIONS.EVENTS, eventId, 'registrations'),
-                            where('teamId', '==', regData.teamId)
-                        );
-                        const teamRegsSnap = await getDocs(qTeamRegs);
-                        const paidUserIds = new Set(
-                            teamRegsSnap.docs
-                                .map(d => d.data())
-                                .filter(d => ['success', 'free', 'completed'].includes(d.paymentStatus || ''))
-                                .map(d => d.userId)
-                        );
+                        // The team is confirmed if this user (who is viewing it) has a success/free registration.
+                        // We preserve all team members so the full team is visible, regardless of who paid.
 
-                        if (paidUserIds.size > 0) {
-                            teamData.members = teamData.members.filter((m: any) => paidUserIds.has(m.userId));
-                            teamData.memberIds = teamData.memberIds.filter((uid: string) => paidUserIds.has(uid));
-                        }
+                        // We do not filter validPaidMembers here anymore, since one payment covers the team.
 
                         setTeam(teamData);
                     }
@@ -138,18 +125,20 @@ export default function EventDetailsPage() {
                             members: await Promise.all(validMembers.map(async (m: any) => {
                                 // We might need their real name from 'users' collection, but as a fallback:
                                 let name = 'Student';
+                                let regNo = 'N/A';
                                 try {
                                     const uSnap = await getDoc(doc(db, 'users', m.userId));
                                     if (uSnap.exists()) {
                                         const uData = uSnap.data();
                                         name = uData.fullName || uData.name || 'Student';
+                                        regNo = uData.registrationNumber || 'N/A';
                                     }
                                 } catch (e) { }
 
                                 return {
                                     userId: m.userId,
                                     name: name,
-                                    regNo: 'N/A'
+                                    regNo: regNo
                                 };
                             })),
                             memberIds: validMembers.map((m: any) => m.userId)

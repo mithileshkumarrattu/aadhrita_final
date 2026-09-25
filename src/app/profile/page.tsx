@@ -8,7 +8,8 @@ import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, ArrowLeft, LogOut, Camera, Phone, Mail, Shield, User } from 'lucide-react';
+import { ArrowLeft, LogOut, Camera, Phone, Mail, Shield, User } from 'lucide-react';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 import { toast } from 'sonner';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/db';
@@ -56,6 +57,36 @@ export default function ProfilePage() {
         }
     };
 
+    const [isEditingName, setIsEditingName] = React.useState(false);
+    const [editedName, setEditedName] = React.useState('');
+
+    React.useEffect(() => {
+        if (userProfile?.fullName) {
+            setEditedName(userProfile.fullName);
+        }
+    }, [userProfile?.fullName]);
+
+    const handleSaveName = async () => {
+        if (!user || !editedName.trim() || editedName.trim() === userProfile?.fullName) {
+            setIsEditingName(false);
+            return;
+        }
+        setUploading(true);
+        try {
+            await updateDoc(doc(db, 'users', user.uid), {
+                fullName: editedName.trim()
+            });
+            toast.success("Name updated successfully!");
+            setIsEditingName(false);
+            // Optional: call refreshProfile() if needed, or assume it will sync via onSnapshot or next load
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to update name");
+        } finally {
+            setUploading(false);
+        }
+    };
+
     const handleLogout = async () => {
         if (confirm("Are you sure you want to log out?")) {
             await logout();
@@ -63,7 +94,7 @@ export default function ProfilePage() {
         }
     };
 
-    if (!userProfile) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><Loader2 className="animate-spin text-white" /></div>;
+    if (!userProfile) return null;
 
     return (
         <div className="min-h-screen bg-zinc-950 text-white relative overflow-hidden">
@@ -73,10 +104,10 @@ export default function ProfilePage() {
             <div className="max-w-2xl mx-auto p-4 md:p-8 relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <Button
                     variant="ghost"
-                    onClick={() => router.back()}
+                    onClick={() => router.push('/dashboard')}
                     className="mb-6 text-neutral-400 hover:text-white pl-0 hover:bg-transparent"
                 >
-                    <ArrowLeft className="w-5 h-5 mr-2" /> Back
+                    <ArrowLeft className="w-5 h-5 mr-2" /> Back to Dashboard
                 </Button>
 
                 <div className="flex flex-col items-center mb-8">
@@ -99,19 +130,35 @@ export default function ProfilePage() {
                         <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                     </div>
 
-                    <h1 className={cn("text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-neutral-400", cinzel.className)}>
-                        {userProfile.fullName}
-                    </h1>
-                    <p className="text-neutral-500 font-mono text-sm mt-1">{userProfile.registrationNumber}</p>
-
-                    <div className="mt-4 flex gap-2">
-                        <span className="px-3 py-1 bg-zinc-900 border border-zinc-800 rounded-full text-[10px] font-bold uppercase text-neutral-400 tracking-wider">
-                            {userProfile.branch}
-                        </span>
-                        <span className="px-3 py-1 bg-zinc-900 border border-zinc-800 rounded-full text-[10px] font-bold uppercase text-neutral-400 tracking-wider">
-                            Year {userProfile.yearOfStudy || 'N/A'}
-                        </span>
-                    </div>
+                    {isEditingName ? (
+                        <div className="flex items-center gap-2 mb-1">
+                            <Input
+                                value={editedName}
+                                onChange={(e) => setEditedName(e.target.value)}
+                                className="bg-zinc-900 border-zinc-700 text-white h-10 text-center font-bold text-lg"
+                                autoFocus
+                            />
+                            <Button size="sm" onClick={handleSaveName} disabled={uploading} className="h-10 bg-red-600 hover:bg-red-700 text-white px-4">Save</Button>
+                            <Button size="sm" variant="ghost" onClick={() => { setIsEditingName(false); setEditedName(userProfile.fullName); }} className="h-10">Cancel</Button>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center">
+                            <div className="flex items-center gap-2 cursor-pointer group mb-1" onClick={() => setIsEditingName(true)}>
+                                <h1 className={cn("text-3xl font-bold text-white group-hover:text-red-400 transition-colors", cinzel.className)}>
+                                    {userProfile.fullName}
+                                </h1>
+                                <User className="w-4 h-4 text-neutral-500 group-hover:text-red-400 transition-colors" />
+                            </div>
+                            <Button
+                                variant="link"
+                                size="sm"
+                                onClick={() => setIsEditingName(true)}
+                                className="text-[10px] text-neutral-500 hover:text-red-400 p-0 h-auto uppercase tracking-widest font-bold"
+                            >
+                                Edit Name
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="space-y-6">
@@ -120,17 +167,17 @@ export default function ProfilePage() {
                         <div className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <Label className="text-neutral-400 text-xs">Email Address</Label>
-                                    <div className="flex items-center gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
-                                        <Mail className="w-4 h-4 text-neutral-500" />
-                                        <span className="text-sm font-medium">{userProfile.email}</span>
+                                    <Label className="text-neutral-400 text-xs font-bold uppercase tracking-wider">Email Address</Label>
+                                    <div className="flex items-center gap-3 p-4 bg-zinc-900/80 rounded-xl border border-white/10 text-white shadow-inner">
+                                        <Mail className="w-5 h-5 text-red-500" />
+                                        <span className="text-sm font-bold tracking-tight">{userProfile.email}</span>
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-neutral-400 text-xs">Mobile Number</Label>
-                                    <div className="flex items-center gap-3 p-3 bg-black/40 rounded-xl border border-white/5">
-                                        <Phone className="w-4 h-4 text-neutral-500" />
-                                        <span className="text-sm font-medium">{userProfile.mobileNumber || 'Not set'}</span>
+                                    <Label className="text-neutral-400 text-xs font-bold uppercase tracking-wider">Mobile Number</Label>
+                                    <div className="flex items-center gap-3 p-4 bg-zinc-900/80 rounded-xl border border-white/10 text-white shadow-inner">
+                                        <Phone className="w-5 h-5 text-red-500" />
+                                        <span className="text-sm font-bold tracking-tight">{userProfile.mobileNumber || 'Not provided'}</span>
                                     </div>
                                 </div>
                             </div>
@@ -142,22 +189,22 @@ export default function ProfilePage() {
                             <Shield className="w-3 h-3" /> Event Support
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <a href="tel:+918888888888" className="flex items-center gap-3 p-4 bg-amber-950/30 rounded-xl border border-amber-900/30 hover:bg-amber-900/40 transition-colors group">
+                            <a href="tel:+919010432006" className="flex items-center gap-3 p-4 bg-amber-950/30 rounded-xl border border-amber-900/30 hover:bg-amber-900/40 transition-colors group">
                                 <div className="w-10 h-10 rounded-full bg-amber-600/20 flex items-center justify-center group-hover:scale-110 transition-transform">
                                     <Phone className="w-5 h-5 text-amber-500" />
                                 </div>
                                 <div>
-                                    <p className="text-xs text-amber-400/80 font-bold uppercase">Technical Support</p>
-                                    <p className="text-sm font-bold text-amber-100">+91 88888 88888</p>
+                                    <p className="text-[10px] text-amber-400/80 font-bold uppercase pb-1 leading-tight">STUDENT CO-ORDINATOR</p>
+                                    <p className="text-sm font-bold text-amber-100">+91 90104 32006</p>
                                 </div>
                             </a>
-                            <a href="mailto:support@aadhrita.com" className="flex items-center gap-3 p-4 bg-amber-950/30 rounded-xl border border-amber-900/30 hover:bg-amber-900/40 transition-colors group">
+                            <a href="mailto:support.aadhrita@mvgrce.edu.in" className="flex items-center gap-3 p-4 bg-amber-950/30 rounded-xl border border-amber-900/30 hover:bg-amber-900/40 transition-colors group">
                                 <div className="w-10 h-10 rounded-full bg-amber-600/20 flex items-center justify-center group-hover:scale-110 transition-transform">
                                     <Mail className="w-5 h-5 text-amber-500" />
                                 </div>
                                 <div>
-                                    <p className="text-xs text-amber-400/80 font-bold uppercase">General Queries</p>
-                                    <p className="text-sm font-bold text-amber-100">support@aadhrita.com</p>
+                                    <p className="text-[10px] text-amber-400/80 font-bold uppercase pb-1 leading-tight">General Queries</p>
+                                    <p className="text-xs font-bold text-amber-100 break-all pr-2">support.aadhrita@mvgrce.edu.in</p>
                                 </div>
                             </a>
                         </div>
@@ -169,10 +216,6 @@ export default function ProfilePage() {
                     >
                         <LogOut className="w-5 h-5 mr-2" /> Log Out
                     </Button>
-
-                    <p className="text-[10px] text-center text-zinc-700 font-mono pt-4">
-                        User ID: {user?.uid} • v2.1.0 • Aadhrita 2026
-                    </p>
                 </div>
             </div>
         </div>

@@ -54,11 +54,15 @@ const Footer = () => {
                                 <Link href="/create-event" className="hover:text-white transition-colors">Register</Link>
                                 <Link href="/dashboard" className="hover:text-white transition-colors">My Dashboard</Link>
                                 <Link href="/sponsors" className="hover:text-white transition-colors">Sponsors</Link>
-                                <Link href="/help" className="hover:text-white transition-colors">Help Desk</Link>
+
                                 <Link href="/scoreboard" className="hover:text-white transition-colors">🏆 Scoreboard</Link>
                                 <Link href="/faculty" className="hover:text-white transition-colors flex items-center gap-1.5">
                                     <span className="text-[9px] bg-yellow-600/20 text-yellow-500 font-bold uppercase px-1.5 py-0.5 rounded">Admin</span>
                                     Faculty Portal
+                                </Link>
+                                <Link href="/security" className="hover:text-white transition-colors flex items-center gap-1.5">
+                                    <span className="text-[9px] bg-green-600/20 text-green-500 font-bold uppercase px-1.5 py-0.5 rounded">Staff</span>
+                                    Security Scanner
                                 </Link>
                             </div>
                         </div>
@@ -81,7 +85,6 @@ const Footer = () => {
                                 <a href="https://www.instagram.com/aadhrita2026/" target="_blank" className="flex items-center gap-2 hover:text-[#E1306C] transition-colors">
                                     <Instagram className="w-4 h-4" /> Instagram
                                 </a>
-
                             </div>
                         </div>
 
@@ -94,7 +97,7 @@ const Footer = () => {
                         Copyright © 2026 MVGR College of Engineering. All rights reserved.
                     </p>
                     <p className="text-neutral-600 text-xs tracking-wider uppercase">
-                        Designed by <span className="text-white">Aadhrita Team</span>
+                        MADE BY <a href="https://metheleshkumarr.framer.website/" target="_blank" rel="noopener noreferrer" className="text-white hover:text-[#D4AF37] transition-colors underline underline-offset-4">MITHILESH</a>
                     </p>
                 </div>
 

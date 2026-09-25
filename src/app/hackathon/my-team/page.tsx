@@ -6,11 +6,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db, HackathonTeam } from '@/lib/db';
 import { Button } from '@/components/ui/button';
-import { Loader2, CheckCircle2, Copy, ExternalLink, BedDouble, Trophy, Users, Receipt, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, Copy, ExternalLink, BedDouble, Trophy, Users, Receipt, ArrowLeft, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Cinzel } from 'next/font/google';
 import { Suspense } from 'react';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 const cinzel = Cinzel({ subsets: ['latin'] });
 
@@ -64,7 +65,7 @@ function HackathonMyTeamContent() {
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-black">
-                <Loader2 className="w-10 h-10 text-yellow-500 animate-spin" />
+                <CoinLoader size={48} text="Locating Team Passport..." />
             </div>
         );
     }
@@ -274,6 +275,32 @@ function HackathonMyTeamContent() {
                     </div>
                 )}
 
+                {/* Paid but no passes yet */}
+                {isPaid && passTokens.length === 0 && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6 mb-6 text-center space-y-4">
+                        <div className="w-12 h-12 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto">
+                            <Calendar className="w-6 h-6 text-amber-500" />
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="text-amber-400 font-bold">Passes Generating...</h3>
+                            <p className="text-xs text-neutral-400 leading-relaxed">
+                                Your payment is confirmed! We are currently generating your team passes. This usually takes 5-10 minutes.
+                            </p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                            onClick={() => window.location.reload()}
+                        >
+                            Refresh Status
+                        </Button>
+                        <p className="text-[10px] text-neutral-500">
+                            If passes don&apos;t appear after 15 minutes, please contact the coordinator with your Transaction ID.
+                        </p>
+                    </div>
+                )}
+
                 {/* Not paid yet */}
                 {!isPaid && (
                     <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-6 text-center">
@@ -296,7 +323,7 @@ function HackathonMyTeamContent() {
 
 export default function HackathonMyTeamPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-black"><Loader2 className="w-10 h-10 text-yellow-500 animate-spin" /></div>}>
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-black"><CoinLoader size={48} text="Syncing..." /></div>}>
             <HackathonMyTeamContent />
         </Suspense>
     );

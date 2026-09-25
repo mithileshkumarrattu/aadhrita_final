@@ -3,12 +3,12 @@ import { db } from '@/lib/db';
 import { collection, getDocs } from 'firebase/firestore';
 import { getAdminWallet, getTokenContract } from '@/lib/wallet-utils';
 import { parseEther } from 'ethers';
-
-// Helper for concurrent promises with limit (optional, but good for RPC)
-// For now, let's just blast them since Sepolia RPC usually handles 50-100 okay-ish.
-// If valid users > 50, we might need a queue.
+import { verifyAdminRequest } from '@/lib/api-auth';
 
 export async function POST(request: Request) {
+    const auth = await verifyAdminRequest(request);
+    if (!auth.ok) return auth.response;
+
     try {
         const { amount } = await request.json();
 

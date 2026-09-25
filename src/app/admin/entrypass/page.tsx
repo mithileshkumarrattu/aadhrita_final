@@ -28,6 +28,8 @@ export default function AdminEntryPassPage() {
     const [loading, setLoading] = React.useState(true);
     const [searchQuery, setSearchQuery] = React.useState('');
     const [syncing, setSyncing] = React.useState(false);
+    const [entryLogs, setEntryLogs] = React.useState<any[]>([]);
+    const [entryStats, setEntryStats] = React.useState({ uniqueCount: 0 });
 
     // Fetch Users with Entry Pass
     React.useEffect(() => {
@@ -53,6 +55,27 @@ export default function AdminEntryPassPage() {
             console.error("Error fetching entry pass users:", error);
             toast.error("Failed to fetch data");
             setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, []);
+
+    // Fetch Unique Entry Logs
+    React.useEffect(() => {
+        const q = query(
+            collection(db, COLLECTIONS.ACCESS_LOGS),
+            where('scanType', 'in', ['ENTRY', 'ADMIN_ENTRY'])
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setEntryLogs(logs);
+            
+            // Calculate Unique User IDs
+            const uniqueUIDs = new Set(logs.map((l: any) => l.userId));
+            setEntryStats({ uniqueCount: uniqueUIDs.size });
+        }, (error) => {
+            console.error("Error fetching access logs:", error);
         });
 
         return () => unsubscribe();
@@ -94,6 +117,39 @@ export default function AdminEntryPassPage() {
         XLSX.utils.book_append_sheet(wb, ws, "Entry Pass Holders");
         XLSX.writeFile(wb, `EntryPass_Holders_${new Date().toISOString().split('T')[0]}.xlsx`);
         toast.success("Exported successfully");
+    };
+
+    const handleExportEntered = () => {
+        if (entryLogs.length === 0) {
+            toast.error("No entry data to export");
+            return;
+        }
+
+        const uniqueUIDs = new Set(entryLogs.map((l: any) => l.userId));
+        const enteredUsers = users.filter(u => uniqueUIDs.has(u.uid));
+
+        if (enteredUsers.length === 0) {
+            toast.error("No profiled users found in entry logs");
+            return;
+        }
+
+        const dataToExport = enteredUsers.map(u => ({
+            "Full Name": u.fullName,
+            "Reg No": u.registrationNumber,
+            "Email": u.email,
+            "Phone": u.mobileNumber,
+            "College": u.collegeName,
+            "Branch": u.branch || u.department,
+            "Year": u.yearOfStudy,
+            "Entry Status": "ENTERED",
+            "User ID": u.uid
+        }));
+
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        XLSX.utils.book_append_sheet(wb, ws, "Campus Entries");
+        XLSX.writeFile(wb, `Campus_Entries_${new Date().toISOString().split('T')[0]}.xlsx`);
+        toast.success("Exported entries successfully");
     };
 
     // --- MIGRATION TOOL ---
@@ -156,7 +212,10 @@ export default function AdminEntryPassPage() {
                     <div className="text-neutral-400 mt-2 font-medium flex items-center">
                         Manage users with valid entry passes.
                         <Badge variant="outline" className="ml-3 border-amber-500/30 text-amber-400 bg-amber-950/20">
-                            Total: {users.length}
+                            Passes: {users.length}
+                        </Badge>
+                        <Badge variant="outline" className="ml-2 border-emerald-500/30 text-emerald-400 bg-emerald-950/20">
+                            Unique Entries: {entryStats.uniqueCount}
                         </Badge>
                     </div>
                 </div>
@@ -172,10 +231,17 @@ export default function AdminEntryPassPage() {
                     </Button>
                     <Button
                         variant="outline"
+                        onClick={handleExportEntered}
+                        className="border-emerald-600/50 text-emerald-500 hover:bg-emerald-900/20 hover:text-emerald-400 font-bold"
+                    >
+                        <Download className="mr-2 h-4 w-4" /> Export Entries
+                    </Button>
+                    <Button
+                        variant="outline"
                         onClick={handleExport}
                         className="border-amber-600/50 text-amber-500 hover:bg-amber-900/20 hover:text-amber-400 font-bold"
                     >
-                        <Download className="mr-2 h-4 w-4" /> Export Excel
+                        <Download className="mr-2 h-4 w-4" /> Export All Passes
                     </Button>
                 </div>
             </div>

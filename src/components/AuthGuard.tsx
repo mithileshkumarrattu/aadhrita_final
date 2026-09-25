@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
+import { FullScreenCoinLoader } from '@/components/ui/CoinLoader';
 
 // ── Module-level cache ────────────────────────────────────────────────────────
 // Keyed by user UID. Stores the result of the Firestore "hasEntryPass" check so
@@ -15,7 +16,7 @@ const PUBLIC_PATHS = [
     '/', '/login', '/signup', '/enrollment/hackathon', '/about', '/events',
     '/team', '/schedule', '/entrypass', '/support', '/help', '/pass',
     '/register/hackathon', '/conduct', '/privacy', '/payment-success', '/payment-failed',
-    '/scoreboard'
+    '/scoreboard', '/faculty', '/security', '/hackathon-dashboard', '/dashboard/entrypass'
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -24,31 +25,9 @@ function isPublicPath(pathname: string): boolean {
     );
 }
 
-// ── Lightweight fullscreen loader ─────────────────────────────────────────────
-// Replaces FullScreenCoinLoader — single CSS spinner, no image, no 3D transforms.
-// Much lighter on the GPU; indistinguishable to users at normal loading durations.
-function QuickLoader() {
-    return (
-        <div style={{
-            position: 'fixed', inset: 0, zIndex: 100,
-            background: '#050505', display: 'flex',
-            flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            gap: '16px',
-        }}>
-            <div style={{
-                width: 40, height: 40,
-                border: '3px solid rgba(212,175,55,0.2)',
-                borderTop: '3px solid #D4AF37',
-                borderRadius: '50%',
-                animation: 'spin 0.7s linear infinite',
-            }} />
-            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        </div>
-    );
-}
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-    const { user, loading, userProfile } = useAuth();
+    const { user, loading, userProfile, profileLoading } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
 
@@ -58,7 +37,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     const [checking, setChecking] = React.useState(!isPublic);
 
     React.useEffect(() => {
-        if (loading) return; // Wait for Firebase auth to initialise
+        if (loading || profileLoading) return; // Wait for Firebase auth and profile to initialise
 
         const currentPath = pathname || '/';
         const pub = isPublicPath(currentPath);
@@ -94,7 +73,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
             if (cachedResult !== undefined) {
                 // Cache hit — instant decision, no Firestore call
-                if (!cachedResult && currentPath !== '/register/hackathon' && !currentPath.includes('/register/onboarding')) {
+                if (!cachedResult && currentPath !== '/register/hackathon' && !currentPath.includes('/register/onboarding') && currentPath !== '/dashboard') {
                     router.replace('/register/onboarding');
                 }
                 setChecking(false);
@@ -107,12 +86,20 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                     const { doc, getDoc } = await import('firebase/firestore');
                     const { db, COLLECTIONS } = await import('@/lib/db');
                     const snap = await getDoc(doc(db, COLLECTIONS.USERS, user.uid));
-                    const isOnboarded = snap.exists() && snap.data()?.hasEntryPass === true;
+
+                    let isOnboarded = false;
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        isOnboarded = data?.hasEntryPass === true || data?.isOnboarded === true || data?.role === 'admin' || data?.role === 'student';
+                    }
 
                     // Store in cache for every future navigation
                     onboardingCache.set(user.uid, isOnboarded);
 
-                    if (!isOnboarded && currentPath !== '/register/hackathon' && !currentPath.includes('/register/onboarding')) {
+                    // Only force onboarding if they actually aren't onboarded logically
+                    // We REMOVED the strict override that forced /dashboard users back to /onboarding
+                    // because /dashboard has its own "Access Denied" state
+                    if (!isOnboarded && currentPath !== '/register/hackathon' && !currentPath.includes('/register/onboarding') && currentPath !== '/dashboard') {
                         router.replace('/register/onboarding');
                     }
                 } catch (e) {
@@ -129,8 +116,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }, [user, userProfile, loading, pathname]);
 
     // Show the lightweight loader only while genuinely checking a protected route
-    if (loading || (user && checking)) {
-        return <QuickLoader />;
+    if (loading || profileLoading || (user && checking)) {
+        return <FullScreenCoinLoader text="Verifying Portal Access..." />;
     }
 
     return <>{children}</>;

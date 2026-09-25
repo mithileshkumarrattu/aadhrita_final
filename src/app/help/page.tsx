@@ -41,21 +41,49 @@ export default function HelpPage() {
                             answer="Click on the 'Get Entry Pass' button on the home page. You'll need to sign in with Google and complete a simple onboarding form. Once done, you can proceed to event enrollment."
                         />
                         <FaqItem
+                            question="Is there an entry fee?"
+                            answer="Yes, the registration fee is ₹200 for MVGR students and ₹300 for non-MVGR students. This includes an Entry Pass to the festival. Additional technical events cost ₹100 each."
+                        />
+                        <FaqItem
+                            question="How do I download my Event Pass?"
+                            answer="Once registered successfully, your pass will be available on your Dashboard. You can show the QR code at the event entrance."
+                        />
+                        <FaqItem
+                            question="Can I register for multiple events?"
+                            answer="Yes! You can add multiple events during registration or later from your Dashboard. Each additional technical event costs ₹100."
+                        />
+                        <FaqItem
                             question="I registered for the Hackathon but didn't get a confirmation."
                             answer="Check your dashboard for registration status. Status updates (Shortlisted/Pending) will be reflected there. You will also receive email notifications for major updates."
                         />
                         <FaqItem
-                            question="Is there an entry fee?"
-                            answer="General Entry is free. Specific events like the Hackathon (Final Round) or Workshops may have a registration fee which can be paid via the dashboard."
-                        />
-                        <FaqItem
                             question="Who do I contact for payment issues?"
-                            answer="Please email support@mvgr.com or visit the Support page for helpline numbers."
+                            answer="Please email support.aadhrita@mvgrce.edu.in or contact our technical support team listed below."
                         />
-                        <FaqItem
-                            question="How do I form a team?"
-                            answer="During event enrollment (e.g., Hackathon), the Team Leader registers and adds members by their Registration Number. Ensure all members have signed up on the platform first."
-                        />
+                    </div>
+                </div>
+
+                {/* Technical Support Section (Synced from Support) */}
+                <div className="mb-16">
+                    <h2 className={cn("text-2xl font-bold text-white mb-6 flex items-center gap-2", cinzel.className)}>
+                        <HelpCircle className="w-6 h-6 text-blue-500" /> Technical Support
+                    </h2>
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-2xl hover:bg-white/10 transition-colors flex flex-col gap-2">
+                            <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">Technical Support</span>
+                            <h3 className="text-xl font-bold text-white">Methelesh Kumar</h3>
+                            <a href="tel:8333841335" className="text-neutral-300 hover:text-white font-mono text-lg">83338 41335</a>
+                        </div>
+                        <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-2xl hover:bg-white/10 transition-colors flex flex-col gap-2">
+                            <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">Technical Support</span>
+                            <h3 className="text-xl font-bold text-white">Sarthak</h3>
+                            <a href="tel:6304372629" className="text-neutral-300 hover:text-white font-mono text-lg">63043 72629</a>
+                        </div>
+                        <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-2xl hover:bg-white/10 transition-colors flex flex-col gap-2">
+                            <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">Student Co-ordinator</span>
+                            <h3 className="text-xl font-bold text-white">NIKHIL</h3>
+                            <a href="tel:8328471504" className="text-neutral-300 hover:text-white font-mono text-lg">83284 71504</a>
+                        </div>
                     </div>
                 </div>
 
@@ -69,7 +97,7 @@ export default function HelpPage() {
                                 Contact Support
                             </Button>
                         </Link>
-                        <a href="mailto:support@mvgr.com">
+                        <a href="mailto:support.aadhrita@mvgrce.edu.in">
                             <Button className="bg-red-600 hover:bg-red-700 text-white min-w-[150px]">
                                 <Mail className="w-4 h-4 mr-2" /> Email Us
                             </Button>

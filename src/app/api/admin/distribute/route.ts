@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { doc, getDoc } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebase-admin';
 import { getAdminWallet, getTokenContract } from '@/lib/wallet-utils';
 import { parseEther } from 'ethers';
+import { verifyAdminRequest } from '@/lib/api-auth';
 
 export async function POST(request: Request) {
+    const auth = await verifyAdminRequest(request);
+    if (!auth.ok) return auth.response;
+
     try {
         const { userId, amount } = await request.json();
 
@@ -18,12 +21,35 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
         }
 
-        // Get User Wallet
-        const userDoc = await getDoc(doc(db, 'users', userId));
-        if (!userDoc.exists() || !userDoc.data().walletAddress) {
-            return NextResponse.json({ error: 'User wallet not found' }, { status: 404 });
+        // Get User / Staff Wallet
+        let toAddress = null;
+        let userDocInfo = null;
+
+        const userDocRef = adminDb.collection('users').doc(userId);
+        const userDoc = await userDocRef.get();
+
+        if (userDoc.exists && userDoc.data()?.walletAddress) {
+            toAddress = userDoc.data()?.walletAddress;
+            userDocInfo = userDoc.data();
+        } else {
+            // Fallback to check staff_credentials
+            const staffDocRef = adminDb.collection('staff_credentials').doc(userId);
+            const staffDoc = await staffDocRef.get();
+            if (staffDoc.exists && staffDoc.data()?.walletAddress) {
+                toAddress = staffDoc.data()?.walletAddress;
+                userDocInfo = staffDoc.data();
+            } else {
+                // Another fallback in case it's stored by email/username string in DB instead of exact push ID
+                const staffQuery = await adminDb.collection('staff_credentials').where('username', '==', userId).get();
+                if (!staffQuery.empty && staffQuery.docs[0].data()?.walletAddress) {
+                    toAddress = staffQuery.docs[0].data()?.walletAddress;
+                }
+            }
         }
-        const toAddress = userDoc.data().walletAddress;
+
+        if (!toAddress) {
+            return NextResponse.json({ error: 'Wallet not found' }, { status: 404 });
+        }
 
         const adminWallet = getAdminWallet();
         const contract = getTokenContract(adminWallet);

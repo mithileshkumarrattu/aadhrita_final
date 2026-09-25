@@ -1,4 +1,4 @@
-﻿
+
 import { db, COLLECTIONS, StaffCredential } from './db';
 import { auth } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, deleteDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
@@ -9,7 +9,7 @@ import { safeStorage } from '@/lib/utils';
 export interface StaffSession {
     id: string;
     username: string;
-    role: 'security' | 'coordinator' | 'hackathon_coordinator' | 'entrypass_viewer' | 'registrations_viewer';
+    role: 'security' | 'coordinator' | 'hackathon_coordinator' | 'entrypass_viewer' | 'registrations_viewer' | 'convener' | 'onspot_coordinator' | 'fyfp_coordinator' | 'merchandise' | 'campus_manager';
     assignedEventId?: string | null;
     isAuthenticated: boolean;
 }

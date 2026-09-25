@@ -131,47 +131,52 @@ export const joinTeam = async (
 
         if (teamData.members.length >= trueMaxSize) {
             // TEAM IS FULL. But wait! Let's check for "ghosts" (people who abandoned checkout).
-            const qRegs = query(
-                collection(db, 'events', teamData.eventId, 'registrations'),
-                where('teamId', '==', teamData.teamId)
-            );
-            const regsSnap = await getDocs(qRegs);
+            try {
+                const qRegs = query(
+                    collection(db, 'events', teamData.eventId, 'registrations'),
+                    where('teamId', '==', teamData.teamId)
+                );
+                const regsSnap = await getDocs(qRegs);
 
-            // Re-verify the payment status of all current members
-            let evictionCandidateIndex = -1;
+                // Re-verify the payment status of all current members
+                let evictionCandidateIndex = -1;
 
-            for (let i = 0; i < teamData.members.length; i++) {
-                const existingMember = teamData.members[i];
-                // Leaders can't be evicted
-                if (existingMember.userId === teamData.leaderId) continue;
+                for (let i = 0; i < teamData.members.length; i++) {
+                    const existingMember = teamData.members[i];
+                    // Leaders can't be evicted
+                    if (existingMember.userId === teamData.leaderId) continue;
 
-                const regInfo = regsSnap.docs.find(d => d.data().userId === existingMember.userId)?.data();
+                    const regInfo = regsSnap.docs.find(d => d.data().userId === existingMember.userId)?.data();
 
-                // If they don't even have a registration document yet, or their status isn't success/free/completed,
-                // they are a ghost taking up a slot!
-                if (!regInfo || !['success', 'free', 'completed'].includes(regInfo.paymentStatus)) {
-                    evictionCandidateIndex = i;
-                    break;
+                    // If they don't even have a registration document yet, or their status isn't success/free/completed,
+                    // they are a ghost taking up a slot!
+                    if (!regInfo || !['success', 'free', 'completed'].includes(regInfo.paymentStatus)) {
+                        evictionCandidateIndex = i;
+                        break;
+                    }
                 }
-            }
 
-            if (evictionCandidateIndex !== -1) {
-                // A ghost was found! Evict them to make room for our new incoming member.
-                const updatedMembers = [...teamData.members];
-                const updatedMemberIds = [...teamData.memberIds];
+                if (evictionCandidateIndex !== -1) {
+                    // A ghost was found! Evict them to make room for our new incoming member.
+                    const updatedMembers = [...teamData.members];
+                    const updatedMemberIds = [...teamData.memberIds];
 
-                updatedMembers.splice(evictionCandidateIndex, 1);
-                updatedMemberIds.splice(evictionCandidateIndex, 1);
+                    updatedMembers.splice(evictionCandidateIndex, 1);
+                    updatedMemberIds.splice(evictionCandidateIndex, 1);
 
-                updatedMembers.push(member);
-                updatedMemberIds.push(member.userId);
+                    updatedMembers.push(member);
+                    updatedMemberIds.push(member.userId);
 
-                await updateDoc(teamDoc.ref, {
-                    members: updatedMembers,
-                    memberIds: updatedMemberIds
-                });
+                    await updateDoc(teamDoc.ref, {
+                        members: updatedMembers,
+                        memberIds: updatedMemberIds
+                    });
 
-                return { success: true, teamName: teamData.teamName, resolvedTeamId: teamData.teamId };
+                    return { success: true, teamName: teamData.teamName, resolvedTeamId: teamData.teamId };
+                }
+            } catch (ghostErr) {
+                console.error("Ghost check failed (likely permissions or index):", ghostErr);
+                // If ghost check fails, we fallback to strictly full to avoid letting extra people in
             }
 
             return { success: false, error: "Team is full with confirmed registrations." };
@@ -218,26 +223,33 @@ export const verifyTeamId = async (eventId: string, teamId: string): Promise<boo
 
     if (teamData.members.length >= trueMaxSize) {
         // TEAM APPEARS FULL. Check for ghosts before rejecting on the UI.
-        const qRegs = query(
-            collection(db, 'events', teamData.eventId, 'registrations'),
-            where('teamId', '==', teamData.teamId)
-        );
-        const regsSnap = await getDocs(qRegs);
+        try {
+            const qRegs = query(
+                collection(db, 'events', teamData.eventId, 'registrations'),
+                where('teamId', '==', teamId)
+            );
+            const regsSnap = await getDocs(qRegs);
 
-        let hasGhost = false;
-        for (let i = 0; i < teamData.members.length; i++) {
-            const existingMember = teamData.members[i];
-            if (existingMember.userId === teamData.leaderId) continue;
+            let hasGhost = false;
+            for (let i = 0; i < teamData.members.length; i++) {
+                const existingMember = teamData.members[i];
+                if (existingMember.userId === teamData.leaderId) continue;
 
-            const regInfo = regsSnap.docs.find(d => d.data().userId === existingMember.userId)?.data();
-            if (!regInfo || !['success', 'free', 'completed'].includes(regInfo.paymentStatus)) {
-                hasGhost = true;
-                break;
+                const regInfo = regsSnap.docs.find(d => d.data().userId === existingMember.userId)?.data();
+                if (!regInfo || !['success', 'free', 'completed'].includes(regInfo.paymentStatus)) {
+                    hasGhost = true;
+                    break;
+                }
             }
-        }
 
-        if (!hasGhost) {
-            throw new Error("Team is strictly full with paid/confirmed members");
+            if (!hasGhost) {
+                throw new Error("Team is strictly full with paid/confirmed members");
+            }
+        } catch (verifyGhostErr: any) {
+            console.error("Verify ghost check failed:", verifyGhostErr);
+            if (verifyGhostErr.message?.includes("strictly full")) throw verifyGhostErr;
+            // If it's a permission error, we assume full to be safe
+            throw new Error("Unable to verify team capacity. Please try again later.");
         }
     }
 

@@ -8,9 +8,13 @@ import { Lock, GraduationCap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { loginStaff, setStaffSession } from '@/lib/staff-auth';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 export default function FacultyLoginPage() {
     const router = useRouter();
+    const { user, userProfile, loading: authLoading, profileLoading, googleLogin } = useAuth();
+
     const [username, setUsername] = React.useState('');
     const [password, setPassword] = React.useState('');
     const [loading, setLoading] = React.useState(false);
@@ -40,6 +44,36 @@ export default function FacultyLoginPage() {
                 router.push('/faculty/registrations');
                 return;
             }
+            if (result.session.role === 'onspot_coordinator') {
+                setStaffSession(result.session);
+                toast.success("Welcome, On-Spot Event Coordinator");
+                router.push('/onspot');
+                return;
+            }
+            if (result.session.role === 'fyfp_coordinator') {
+                setStaffSession(result.session);
+                toast.success("Welcome, FYFP Event Coordinator");
+                router.push('/fyfp');
+                return;
+            }
+            if (result.session.role === 'merchandise') {
+                setStaffSession(result.session);
+                toast.success("Welcome to the Merchandise Portal");
+                router.push('/aftmerchandise');
+                return;
+            }
+            if (result.session.role === 'campus_manager') {
+                setStaffSession(result.session);
+                toast.success("Welcome, Campus Management Portal");
+                router.push('/faculty/campus-stats');
+                return;
+            }
+            if (result.session.role === 'convener') {
+                setStaffSession(result.session);
+                toast.success("Welcome, Convener of the Fest");
+                router.push('/convener');
+                return;
+            }
             if (result.session.role !== 'coordinator') {
                 toast.error("Access Denied: Not a faculty account");
                 setLoading(false);
@@ -53,6 +87,46 @@ export default function FacultyLoginPage() {
             setLoading(false);
         }
     };
+
+    // Auto-redirect removed intentionally so admins aren't forced straight to the dashboard without authenticating via ID/Password.
+    if (authLoading || profileLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4">
+                <CoinLoader size={48} text="Authenticating..." />
+            </div>
+        );
+    }
+
+    if (!user) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4 relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-tr from-purple-900/20 via-black to-blue-900/20" />
+                <Card className="w-full max-w-md bg-zinc-900/90 border-purple-500/20 backdrop-blur-md relative z-10 shadow-[0_0_50px_rgba(168,85,247,0.1)]">
+                    <CardHeader className="text-center space-y-4">
+                        <div className="mx-auto w-16 h-16 rounded-full bg-purple-500/10 border border-purple-500/30 flex items-center justify-center">
+                            <Lock className="w-8 h-8 text-purple-400" />
+                        </div>
+                        <div className="space-y-1">
+                            <CardTitle className="text-2xl font-bold text-white tracking-tight">
+                                Authentication Required
+                            </CardTitle>
+                            <CardDescription className="text-zinc-400">
+                                You must be securely logged in to your global account before accessing the Faculty Portal.
+                            </CardDescription>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <Button
+                            className="w-full bg-white hover:bg-zinc-200 text-black font-bold h-11 transition-all"
+                            onClick={() => googleLogin('/faculty')}
+                        >
+                            Sign In with Google
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4 relative overflow-hidden">
@@ -100,7 +174,7 @@ export default function FacultyLoginPage() {
                             type="submit"
                             disabled={loading}
                         >
-                            {loading ? <Lock className="animate-pulse w-4 h-4" /> : 'Sign In'}
+                            {loading ? <CoinLoader size={16} /> : 'Sign In'}
                         </Button>
                     </form>
                 </CardContent>

@@ -256,7 +256,7 @@ export default function HackathonEnrollmentPage() {
             if (width > 1024) { height = Math.round((height * 1024) / width); width = 1024; }
             canvas.width = width; canvas.height = height;
             const ctx = canvas.getContext('2d');
-            if(ctx) ctx.drawImage(img, 0, 0, width, height);
+            if (ctx) ctx.drawImage(img, 0, 0, width, height);
             const result = canvas.toDataURL('image/jpeg', 0.7);
             toast.dismiss('compress_image');
             try { safeStorage.setItem('hack_draft_' + fieldPath[0] + '_idCardUrl', result); } catch (e) { console.warn('LocalStorage quota exceeded'); }
@@ -448,6 +448,7 @@ export default function HackathonEnrollmentPage() {
                 emergencyContact: formData.emergencyContact,
                 referralSource: formData.referralSource,
                 status: 'pending',
+                paymentStatus: 'pending',
                 createdAt: serverTimestamp()
             };
 

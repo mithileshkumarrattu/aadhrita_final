@@ -117,3 +117,10 @@ export const EVENTS_DATA: Event[] = [
         createdAt: null
     }
 ];
+
+export const AUTHORIZED_ADMIN_EMAILS = [
+    'rattumethelesh@gmail.com',
+    'gsnreddy125@gmail.com',
+    'sarthakrunthala7@gmail.com',
+    'mithileshkumarrattu@gmail.com',
+];

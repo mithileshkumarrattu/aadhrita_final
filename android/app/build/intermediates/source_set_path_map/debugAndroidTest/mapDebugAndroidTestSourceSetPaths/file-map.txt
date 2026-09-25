@@ -1,6 +1,0 @@
-com.mvgr.student.test.app-core-1.7.0-0 C:\Users\rattu\.gradle\caches\8.11.1\transforms\22543182bd8eaa3597f26722cbac5079\transformed\core-1.7.0\res
-com.mvgr.student.test.app-tracing-1.2.0-1 C:\Users\rattu\.gradle\caches\8.11.1\transforms\3eff2d7ad59d7904be0902039772bf8a\transformed\tracing-1.2.0\res
-com.mvgr.student.test.app-androidTest-2 E:\mvgr\new code\mvgr-student-app\android\app\build\generated\res\resValues\androidTest\debug
-com.mvgr.student.test.app-mergeDebugAndroidTestResources-3 E:\mvgr\new code\mvgr-student-app\android\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\merged.dir
-com.mvgr.student.test.app-mergeDebugAndroidTestResources-4 E:\mvgr\new code\mvgr-student-app\android\app\build\intermediates\incremental\debugAndroidTest\mergeDebugAndroidTestResources\stripped.dir
-com.mvgr.student.test.app-debugAndroidTest-5 E:\mvgr\new code\mvgr-student-app\android\app\build\intermediates\merged_res\debugAndroidTest\mergeDebugAndroidTestResources

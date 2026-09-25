@@ -8,9 +8,13 @@ import { Shield, Fingerprint } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { loginStaff, setStaffSession } from '@/lib/staff-auth';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 export default function SecurityLoginPage() {
     const router = useRouter();
+    const { user, userProfile, loading: authLoading, profileLoading, googleLogin } = useAuth();
+
     const [username, setUsername] = React.useState('');
     const [password, setPassword] = React.useState('');
     const [loading, setLoading] = React.useState(false);
@@ -35,6 +39,45 @@ export default function SecurityLoginPage() {
             setLoading(false);
         }
     };
+
+    if (authLoading || profileLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4">
+                <CoinLoader size={48} text="Authenticating..." />
+            </div>
+        );
+    }
+
+    if (!user) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4 relative overflow-hidden">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-green-900/10 via-black to-black animate-pulse" />
+                <Card className="w-full max-w-md bg-zinc-900/80 border-green-500/20 backdrop-blur-md relative z-10 shadow-[0_0_50px_rgba(34,197,94,0.1)]">
+                    <CardHeader className="text-center space-y-4">
+                        <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-700 flex items-center justify-center shadow-lg border border-green-400/20">
+                            <Shield className="w-8 h-8 text-white" />
+                        </div>
+                        <div className="space-y-1">
+                            <CardTitle className="text-2xl font-black text-white tracking-widest uppercase">
+                                Authentication Required
+                            </CardTitle>
+                            <CardDescription className="text-zinc-400">
+                                You must be securely logged in to your global account before accessing the Security Portal.
+                            </CardDescription>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <Button
+                            className="w-full bg-white hover:bg-zinc-200 text-black font-bold h-11 uppercase tracking-widest transition-all"
+                            onClick={() => googleLogin('/security')}
+                        >
+                            Sign In with Google
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-zinc-950 p-4 relative overflow-hidden">

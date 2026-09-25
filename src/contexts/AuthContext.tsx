@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import * as React from 'react';
 import {
@@ -17,11 +17,14 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { clearOnboardingCache } from '@/components/AuthGuard';
 import { safeStorage } from '@/lib/utils';
+import { AUTHORIZED_ADMIN_EMAILS } from '@/lib/constants';
 
-export type UserRole = 'student' | 'cr' | 'admin';
+// AUTHORIZED_ADMIN_EMAILS moved to constants.ts
+
+export type UserRole = 'student' | 'admin' | 'faculty' | 'cr';
 
 export interface UserProfile {
     uid: string;
@@ -42,7 +45,10 @@ export interface UserProfile {
     cityState?: string;
     idCardUrl?: string;
     hasEntryPass?: boolean;
+    hasReceivedWelcomeKit?: boolean;
+    kitHandoverLoggedBySecurity?: boolean;
     registeredEventIds?: string[];
+    regNo?: string;
 }
 
 interface AuthContextType {
@@ -77,13 +83,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = React.useState(true);
     const [profileLoading, setProfileLoading] = React.useState(true);
     const router = useRouter();
+    const pathname = usePathname();
     // Hold the logged-in user's UID so refreshProfile can re-fetch without capturing stale state
     const currentUidRef = React.useRef<string | null>(null);
     const isLoginFlowRef = React.useRef<boolean>(false);
 
-    // â”€â”€ fetchProfile: one-shot getDoc (no persistent socket) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── fetchProfile: one-shot getDoc (no persistent socket) ──────────────────
     const fetchProfile = React.useCallback(async (firebaseUser: import('firebase/auth').User) => {
-        const isAdminEmail = firebaseUser.email === 'rattumethelesh@gmail.com';
+        const isAdminEmail = AUTHORIZED_ADMIN_EMAILS.includes((firebaseUser.email || '').toLowerCase());
+
         const docRef = doc(db, 'users', firebaseUser.uid);
         const docSnap = await getDoc(docRef);
 
@@ -93,7 +101,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 profile = { ...profile, role: 'admin' };
                 await setDoc(docRef, { role: 'admin' }, { merge: true });
             }
-            setUserProfile({ ...profile, uid: firebaseUser.uid });
+            setUserProfile({ 
+                ...profile, 
+                uid: firebaseUser.uid,
+                regNo: profile.regNo || profile.registrationNumber || ''
+            });
         } else {
             if (isAdminEmail) {
                 const p: UserProfile = {
@@ -112,8 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
-    // â”€â”€ refreshProfile: called by payment-success after confirming payment â”€â”€â”€â”€
-    // Only users who just paid trigger a re-fetch — not every logged-in user.
+    // ── refreshProfile: called by payment-success after confirming payment ───
     const refreshProfile = React.useCallback(async () => {
         const uid = currentUidRef.current;
         if (!uid) return;
@@ -140,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     // Avoid double-routing: only process stored redirects if not in active manual login flow
                     if (!isLoginFlowRef.current) {
                         const storedRedirect = safeStorage.getItem('post_login_redirect');
-                        if (storedRedirect) {
+                        if (storedRedirect && storedRedirect !== '/' && storedRedirect !== pathname) {
                             safeStorage.removeItem('post_login_redirect');
                             router.push(storedRedirect);
                         }
@@ -159,19 +170,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
         return () => unsubscribe();
-    }, [fetchProfile]);
+    }, [fetchProfile, pathname, router]);
 
     // Handle redirect result for mobile/iOS Google login
-    // On iOS, signInWithRedirect is used — the user returns here after auth.
-    // We pick up the result here, create their profile, and route them.
-    //
-    // IMPORTANT: Only run getRedirectResult() when we actually triggered a redirect.
-    // If called during an active signInWithPopup flow it causes Firebase internal error:
-    // "INTERNAL ASSERTION FAILED: Pending promise was never set".
-    // The localStorage flag 'auth_redirect_pending' is set right before signInWithRedirect()
-    // and cleared here after consuming the result.
-    // IMPORTANT: Must use localStorage, NOT sessionStorage — iOS Safari resets sessionStorage
-    // during cross-domain OAuth redirects, causing the flag to always be missing on return.
     React.useEffect(() => {
         console.log('[Auth] Checking for Google redirect result...');
 
@@ -185,40 +186,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 const docSnap = await getDoc(docRef);
 
                 if (!docSnap.exists()) {
-                    // New user — create Firestore profile
+                    const isAdminEmail = AUTHORIZED_ADMIN_EMAILS.includes((user.email || '').toLowerCase());
                     const newProfile: UserProfile = {
                         uid: user.uid,
                         email: user.email!,
-                        role: 'student',
+                        role: isAdminEmail ? 'admin' : 'student',
                         fullName: user.displayName || 'Student',
-                        registrationNumber: 'GOOGLE_USER',
+                        registrationNumber: isAdminEmail ? 'ADMIN' : 'GOOGLE_USER',
                         semester: 1,
                         section: 'A',
                         department: 'General'
                     };
+                    if (isAdminEmail) newProfile.hasEntryPass = true;
                     await setDoc(docRef, { ...newProfile, createdAt: serverTimestamp() });
                     setUserProfile(newProfile);
                 }
 
-                // Ensure wallet exists for EVERY login, not just the first time
                 fetch('/api/wallet/create', {
                     method: 'POST',
                     body: JSON.stringify({ userId: user.uid, email: user.email }),
                 }).catch(e => console.error("Wallet check/creation failed", e));
 
-                // Wait for a brief moment to allow onAuthStateChanged to pick up the user before routing
+                // Wait for a moment to allow onAuthStateChanged to pick up the user before routing
                 setTimeout(() => {
                     const storedRedirect = safeStorage.getItem('post_login_redirect');
 
-                    if (storedRedirect) {
+                    if (storedRedirect && storedRedirect !== '/') {
                         safeStorage.removeItem('post_login_redirect');
                         router.push(storedRedirect);
                         return;
                     }
 
+                    // If already on a public path (like /faculty or /security), don't force redirect to onboarding
+                    const isPubPath = pathname?.startsWith('/faculty') || pathname?.startsWith('/security') || pathname === '/' || pathname?.startsWith('/about') || pathname?.startsWith('/events');
+                    if (isPubPath) return;
+
                     if (docSnap.exists()) {
                         const existingData = docSnap.data();
-                        if (existingData.isOnboarded || existingData.hasEntryPass || existingData.role === 'admin') {
+                        if (existingData.isOnboarded || existingData.hasEntryPass || existingData.role === 'admin' || existingData.role === 'student') {
                             router.push('/dashboard');
                             return;
                         }
@@ -229,13 +234,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             })
             .catch((err) => {
-                // Silently ignore if no redirect was in progress
                 if (err.code !== 'auth/no-auth-event') {
                     console.error('[Redirect] getRedirectResult error:', err);
                 }
             });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [pathname, router]);
 
     // Handle returning Magic Link (Email Sign-in)
     React.useEffect(() => {
@@ -257,36 +260,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         const docSnap = await getDoc(docRef);
 
                         if (!docSnap.exists()) {
+                            const isAdminEmail = AUTHORIZED_ADMIN_EMAILS.includes((user.email || '').toLowerCase());
                             const newProfile: UserProfile = {
                                 uid: user.uid,
                                 email: user.email!,
-                                role: 'student',
+                                role: isAdminEmail ? 'admin' : 'student',
                                 fullName: user.displayName || 'Student',
-                                registrationNumber: 'MAGIC_LINK_USER',
+                                registrationNumber: isAdminEmail ? 'ADMIN' : 'MAGIC_LINK_USER',
                                 semester: 1,
                                 section: 'A',
                                 department: 'General'
                             };
+                            if (isAdminEmail) newProfile.hasEntryPass = true;
                             await setDoc(docRef, { ...newProfile, createdAt: serverTimestamp() });
                             setUserProfile(newProfile);
                         } else {
                             setUserProfile({ ...docSnap.data() as UserProfile, uid: user.uid });
                         }
 
-                        // Ensure wallet exists for EVERY login
                         fetch('/api/wallet/create', {
                             method: 'POST',
                             body: JSON.stringify({ userId: user.uid, email: user.email }),
                         }).catch(e => console.error("Wallet check/creation failed", e));
 
                         const storedRedirect = safeStorage.getItem('post_login_redirect');
-                        if (storedRedirect) {
+                        if (storedRedirect && storedRedirect !== '/') {
                             safeStorage.removeItem('post_login_redirect');
                             router.push(storedRedirect);
                         } else {
                             if (docSnap.exists()) {
                                 const existingData = docSnap.data();
-                                if (existingData.isOnboarded || existingData.hasEntryPass || existingData.role === 'admin') {
+                                if (existingData.isOnboarded || existingData.hasEntryPass || existingData.role === 'admin' || existingData.role === 'student') {
                                     router.push('/dashboard');
                                     return;
                                 }
@@ -303,7 +307,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [router]);
 
     const login = async (regNo: string, password: string) => {
-        // Map regNo to email if it's not already an email
         const email = regNo.includes('@')
             ? regNo
             : `${regNo.replace(/\s/g, '').toLowerCase()}@grcampx.firebaseapp.com`;
@@ -311,8 +314,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log("Attempting login with:", email);
         try {
             const cred = await signInWithEmailAndPassword(auth, email, password);
-
-            // Ensure Wallet Exists (Async, don't await blocking UI)
             fetch('/api/wallet/create', {
                 method: 'POST',
                 body: JSON.stringify({ userId: cred.user.uid, email: cred.user.email }),
@@ -333,13 +334,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             };
 
             await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-
             safeStorage.setItem('emailForSignIn', email);
-
             if (redirectPath) {
                 safeStorage.setItem('post_login_redirect', redirectPath);
             }
-
             alert("Login link sent! Please check your email inbox (or spam folder) to sign in.");
         } catch (error: any) {
             console.error("Error sending magic link:", error);
@@ -351,11 +349,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const googleLogin = async (redirectPath?: string) => {
         try {
             console.log("Starting Google Login...");
-
-            // All Firebase auth functions are imported statically at the top of this file.
-            // Do NOT use dynamic import() here — any `await` before signInWithPopup
-            // breaks the synchronous user-gesture context and causes browsers to
-            // block the popup or open duplicate tabs.
             const provider = new GoogleAuthProvider();
             provider.setCustomParameters({ prompt: 'select_account' });
 
@@ -363,13 +356,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 safeStorage.setItem('post_login_redirect', redirectPath);
             }
 
-            // â”€â”€ iOS / iPadOS detection only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            // signInWithPopup is blocked on iOS/iPadOS by WebKit's security policy.
-            // We use signInWithRedirect for these devices; the result is handled
-            // by the getRedirectResult() useEffect already in place.
-            // We intentionally DO NOT detect desktop Safari here — the complex
-            // regex often misidentifies desktop Chrome/Edge and causes false redirects
-            // on non-Apple machines, producing multiple-tab chaos.
             const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
             const isIos = /iPad|iPhone|iPod/.test(ua) ||
                 (typeof navigator !== 'undefined' &&
@@ -377,58 +363,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     navigator.maxTouchPoints > 1);
 
             if (isIos) {
-                // No await — let the browser redirect immediately with the user's gesture intact
                 console.log("[Auth] iOS/iPadOS detected — using signInWithRedirect");
                 signInWithRedirect(auth, provider);
                 return;
             }
 
-            // â”€â”€ Desktop / Android: use popup synchronously â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            // Because there are NO async awaits before this line, the browser
-            // retains the user-gesture context and will not block the popup.
             isLoginFlowRef.current = true;
-            let user;
             const result = await signInWithPopup(auth, provider);
-            user = result.user;
+            const user = result.user;
             console.log("Google Login Success via Popup:", user.email);
 
-            // Check if profile exists, if not create it
             const docRef = doc(db, 'users', user.uid);
             const docSnap = await getDoc(docRef);
 
             if (!docSnap.exists()) {
+                const isAdminEmail = AUTHORIZED_ADMIN_EMAILS.includes((user.email || '').toLowerCase());
                 const newProfile: UserProfile = {
                     uid: user.uid,
                     email: user.email!,
-                    role: 'student',
+                    role: isAdminEmail ? 'admin' : 'student',
                     fullName: user.displayName || 'Student',
-                    registrationNumber: 'GOOGLE_USER',
+                    registrationNumber: isAdminEmail ? 'ADMIN' : 'GOOGLE_USER',
                     semester: 1,
                     section: 'A',
                     department: 'General'
                 };
+                if (isAdminEmail) newProfile.hasEntryPass = true;
                 await setDoc(docRef, { ...newProfile, createdAt: serverTimestamp() });
                 setUserProfile(newProfile);
             } else {
-                // Ensure profile is set immediately to avoid race conditions with routing
                 setUserProfile({ ...docSnap.data() as UserProfile, uid: user.uid });
             }
 
-            // Ensure wallet exists for EVERY login
             fetch('/api/wallet/create', {
                 method: 'POST',
                 body: JSON.stringify({ userId: user.uid, email: user.email }),
             }).catch(e => console.error("Wallet check/creation failed", e));
 
-            // Proceed with final routing using the stored redirect
             const storedRedirect = safeStorage.getItem('post_login_redirect');
-            if (storedRedirect) {
+            if (storedRedirect && storedRedirect !== '/') {
                 safeStorage.removeItem('post_login_redirect');
                 router.push(storedRedirect);
             } else {
+                // Same logic as getRedirectResult: check public paths
+                const isPubPath = pathname?.startsWith('/faculty') || pathname?.startsWith('/security') || pathname === '/' || pathname?.startsWith('/about');
+                if (isPubPath) return;
+
                 if (docSnap.exists()) {
                     const existingData = docSnap.data();
-                    if (existingData.isOnboarded || existingData.hasEntryPass || existingData.role === 'admin') {
+                    if (existingData.isOnboarded || existingData.hasEntryPass || existingData.role === 'admin' || existingData.role === 'student') {
                         router.push('/dashboard');
                         return;
                     }
@@ -438,13 +421,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         } catch (error: any) {
             console.error("Google login failed", error);
-            // Do NOT auto-trigger signInWithRedirect inside a catch block.
-            // Doing so causes a page reload while the popup may still be open,
-            // resulting in the duplicate-window race condition the user reported.
             if (error.code === 'auth/internal-error') {
                 alert("Google Sign-In Error: Internal Firebase Error. Please ask Admin to enable Google Auth in Firebase Console.");
             } else if (error.code === 'auth/popup-closed-by-user') {
-                // User dismissed the popup — silent, no alert needed
                 console.log("[Auth] Popup closed by user.");
             } else if (error.code === 'auth/popup-blocked') {
                 alert("Your browser blocked the login popup. Please allow popups for this site and try again.");
@@ -462,15 +441,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ? regNo
             : `${regNo.replace(/\s/g, '').toLowerCase()}@grcampx.firebaseapp.com`;
 
-        console.log("Attempting register with:", email);
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const { user } = userCredential;
-
-            // UPPERCASE for consistent lookup
             const safeRegNo = regNo.toUpperCase();
-
-            // Check for pre-existing Admin-created user doc (keyed by RegNo)
             const preExistingDocRef = doc(db, 'users', safeRegNo);
             const preExistingDocSnap = await getDoc(preExistingDocRef);
 
@@ -480,51 +454,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 role,
                 fullName,
                 registrationNumber: safeRegNo,
-                semester: 1, // Default to 1 if not found
-                section: 'A', // Default fallback
-                department: 'CSE' // Default fallback
+                semester: 1,
+                section: 'A',
+                department: 'CSE'
             };
 
             if (preExistingDocSnap.exists()) {
                 const preData = preExistingDocSnap.data();
-                console.log("Found pre-existing data for " + safeRegNo, preData);
-
-                // Merge pre-existing data (Semester, Section, Batch, etc.)
-                // CRITICAI: We DO NOT overwrite the UID with the old doc ID (which was RegNo)
                 finalProfile = {
                     ...finalProfile,
-                    ...preData, // This brings in classId, section, branch, etc.
-                    uid: user.uid, // Ensure UID matches the new Auth UID
-                    role: preData.role || role, // Prefer admin-assigned role if any
-                    email // Keep email from auth
+                    ...preData,
+                    uid: user.uid,
+                    role: preData.role || role,
+                    email
                 };
-
-                // OPTIONAL: We could delete the old doc, but keeping it might be useful for admin lookups 
-                // until we update admin tools to query by field only. 
-                // For now, we Leave it to prevent data loss.
-            } else {
-                console.warn("No pre-existing data found for " + safeRegNo);
             }
 
-            // Create the real User Profile under UID
             await setDoc(doc(db, 'users', user.uid), {
                 ...finalProfile,
                 createdAt: serverTimestamp(),
             });
 
-            // Set local state immediately for fast feedback
             setUser(user);
             setUserProfile(finalProfile);
 
-            // Create Custodial Wallet (Backend)
-            try {
-                await fetch('/api/wallet/create', {
-                    method: 'POST',
-                    body: JSON.stringify({ userId: user.uid, email }),
-                });
-            } catch (wErr) {
-                console.error("Wallet creation init failed", wErr);
-            }
+            fetch('/api/wallet/create', {
+                method: 'POST',
+                body: JSON.stringify({ userId: user.uid, email }),
+            }).catch(console.error);
 
             router.push('/dashboard');
         } catch (error) {
@@ -552,4 +509,3 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useAuth = () => React.useContext(AuthContext);
-

@@ -29,8 +29,9 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
-import { Loader2, MapPin, CalendarClock, Trophy } from 'lucide-react';
+import { MapPin, CalendarClock, Trophy } from 'lucide-react';
 import { Cinzel } from 'next/font/google';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 const cinzel = Cinzel({ subsets: ['latin'] });
 
@@ -55,8 +56,8 @@ export default function DashboardPage() {
         console.log('[Dashboard] authLoading:', authLoading, 'profileLoading:', profileLoading, 'hasEntryPass:', userProfile?.hasEntryPass, 'role:', userProfile?.role);
         if (authLoading || profileLoading) return false; // Still loading — not denied yet
         if (!userProfile) return true;                   // Logged-out user
-        if (userProfile.hasEntryPass) return false;      // Paid user → allow
-        if (userProfile.role === 'admin') return false;  // Admin → always allow
+        if (userProfile.hasEntryPass === true || String(userProfile.hasEntryPass) === 'true') return false; // Paid user → allow
+        if (userProfile.role === 'admin') return false;   // Admin → always allow
         return true;                                     // No pass & not admin → denied
     }, [userProfile, authLoading, profileLoading]);
 
@@ -82,7 +83,8 @@ export default function DashboardPage() {
 
                 setNotifCount(notifs);
 
-                const events = eventsRaw.filter((e: any) => e.id !== 'hackathon');
+                // Filter out hackathon, flagship, and cancelled events from the general list
+                const events = eventsRaw.filter((e: any) => e.id !== 'hackathon' && e.id !== 'flagship' && e.status !== 'cancelled');
                 setAllEvents(events);
 
                 let registeredIds = new Set<string>();
@@ -137,14 +139,6 @@ export default function DashboardPage() {
         return categories;
     }, [allEvents, myEvents]);
 
-    // Show spinner while auth OR profile is loading
-    if (authLoading || profileLoading) {
-        return (
-            <div className="min-h-screen bg-black flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-yellow-500 animate-spin" />
-            </div>
-        );
-    }
 
     // Show Access Denied IMMEDIATELY after verification (don't wait for data loading)
     if (accessDenied) {
@@ -182,7 +176,7 @@ export default function DashboardPage() {
     if (dataLoading) {
         return (
             <div className="min-h-screen bg-black flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-yellow-500 animate-spin" />
+                <CoinLoader text="Preparing Feed..." />
             </div>
         );
     }
@@ -213,36 +207,31 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-black pb-24 font-sans text-zinc-100">
             {/* Header */}
-            <header className="sticky top-0 z-30 bg-black/90 backdrop-blur-md border-b border-zinc-800 px-4 py-3 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center border-2 border-black shadow-sm overflow-hidden" onClick={() => router.push('/')}>
-                        <img src="/AFT.png" alt="Aadhrita" className="w-full h-full object-contain p-1" />
+            <div className="pt-4 px-3 pb-2 sticky top-0 z-40">
+                <header className="bg-black backdrop-blur-xl border border-yellow-500/50 rounded-[28px] px-5 py-3 flex justify-between items-center shadow-[0_0_20px_rgba(234,179,8,0.15)]">
+                    {/* Left side Logo */}
+                    <div className="flex items-center gap-3 cursor-pointer group" onClick={() => router.push('/')}>
+                        <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center border border-yellow-500/30 shadow-inner overflow-hidden group-hover:border-yellow-500/80 transition-colors">
+                            <img src="/assets/logo-red-crown.png" alt="Aadhrita" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex flex-col -gap-1">
+                            <span className={cn("font-black text-sm tracking-[0.2em] text-yellow-500 uppercase", cinzel.className)}>AADHRITA</span>
+                            <span className="text-[9px] font-bold text-yellow-500/60 tracking-[0.3em] uppercase transition-colors group-hover:text-yellow-400">FEEL THE VIBE</span>
+                        </div>
                     </div>
-                    <span className="font-black text-xl tracking-tighter uppercase italic text-white">AADHRITA</span>
-                </div>
 
-                <div className="flex items-center gap-4">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => router.push('/notifications')}
-                        className="relative hover:bg-transparent"
-                    >
-                        <Bell className="w-6 h-6" strokeWidth={2.5} />
-                        {notifCount > 0 && (
-                            <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
-                        )}
-                    </Button>
-
-                    <div onClick={() => router.push('/profile')} className="cursor-pointer hover:scale-105 transition-transform">
-                        <Avatar className="w-9 h-9 border-2 border-black shadow-sm">
-                            <AvatarFallback className="bg-yellow-400 font-bold text-black text-xs">
-                                {userProfile?.fullName?.[0]?.toUpperCase() || 'U'}
-                            </AvatarFallback>
-                        </Avatar>
+                    {/* Right side Profile */}
+                    <div className="flex items-center gap-2">
+                        <div onClick={() => router.push('/profile')} className="cursor-pointer hover:scale-105 active:scale-95 transition-all ml-1">
+                            <Avatar className="w-10 h-10 border-2 border-yellow-500/30 shadow-xl ring-2 ring-transparent hover:ring-yellow-500/50 transition-all">
+                                <AvatarFallback className="bg-gradient-to-br from-zinc-800 to-black font-bold text-yellow-500 text-xs">
+                                    {userProfile?.fullName?.[0]?.toUpperCase() || 'U'}
+                                </AvatarFallback>
+                            </Avatar>
+                        </div>
                     </div>
-                </div>
-            </header>
+                </header>
+            </div>
 
             <main className="container max-w-md mx-auto px-4 mt-6 space-y-8">
 
@@ -369,8 +358,7 @@ export default function DashboardPage() {
 
                     {allEvents.length === 0 && !dataLoading && (
                         <div className="text-center py-12">
-                            <Loader2 className="w-8 h-8 text-yellow-500 animate-spin mx-auto" />
-                            <p className="text-neutral-500 mt-2">Loading events...</p>
+                            <CoinLoader size={48} text="Loading events..." />
                         </div>
                     )}
                 </div>

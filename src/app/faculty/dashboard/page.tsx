@@ -3,8 +3,8 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { getStaffSession } from '@/lib/staff-auth';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 export default function FacultyDashboardRedirect() {
     const router = useRouter();
@@ -32,7 +32,7 @@ export default function FacultyDashboardRedirect() {
 
     return (
         <div className="min-h-screen bg-black flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
+            <CoinLoader size={48} text="Rerouting to Assigned Portal..." />
         </div>
     );
 }

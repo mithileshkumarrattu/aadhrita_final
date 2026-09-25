@@ -218,7 +218,7 @@
 }
 
 .animate-spin-3d {
-  animation: spin-3d-y 2.5s linear infinite;
+  animation: spin-3d-y 1.5s linear infinite;
   transform-style: preserve-3d;
 }
 

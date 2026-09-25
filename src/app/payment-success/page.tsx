@@ -3,12 +3,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import { db } from "@/lib/db";
 import { collection, query, where, getDocs, collectionGroup, doc, getDoc } from "firebase/firestore";
-import { Loader2, CheckCircle, Copy, ArrowRight, Shield, ExternalLink, AlertTriangle } from "lucide-react";
+import { CheckCircle, Copy, ArrowRight, Shield, ExternalLink, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Cinzel } from 'next/font/google';
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { CoinLoader } from "@/components/ui/CoinLoader";
 
 const cinzel = Cinzel({ subsets: ['latin'] });
 
@@ -187,8 +188,7 @@ function SuccessContent() {
     if (loading) {
         return (
             <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white gap-4">
-                <Loader2 className="w-10 h-10 animate-spin text-yellow-500" />
-                <p className="text-zinc-400 font-medium animate-pulse">{statusMessage}</p>
+                <CoinLoader size={48} text={statusMessage} />
             </div>
         );
     }

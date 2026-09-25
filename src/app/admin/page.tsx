@@ -6,14 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Users, FileText, Bell, Calendar, Image as ImageIcon, Shield, Settings, ShieldAlert, LogOut, Ticket } from 'lucide-react';
 import { db, COLLECTIONS } from '@/lib/db';
 import { cn } from '@/lib/utils';
-import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { collection, getDocs, query, where, writeBatch, doc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import * as React from 'react';
 import { EventService } from '@/services/EventService';
 import { UserService } from '@/services/UserService';
-import { toast } from 'sonner';
 
 export default function AdminDashboardPage() {
     const router = useRouter();
@@ -218,6 +218,16 @@ export default function AdminDashboardPage() {
                     <div className="text-xl font-black mb-1">Data Migration</div>
                     <div className="text-sm font-bold text-slate-500 uppercase tracking-wide">Sync Old Users</div>
                 </Card>
+                <Card
+                    className="p-6 border-2 border-red-200 shadow-sm hover:border-black hover:shadow-neo transition-all rounded-2xl bg-red-50/30 cursor-pointer group"
+                    onClick={() => router.push('/admin/system')}
+                >
+                    <div className="w-12 h-12 rounded-xl bg-red-100 border-2 border-red-200 group-hover:border-black flex items-center justify-center mb-4 transition-colors">
+                        <ShieldAlert className="w-6 h-6 text-red-600" />
+                    </div>
+                    <div className="text-xl font-black mb-1 text-red-900">System Reset</div>
+                    <div className="text-sm font-bold text-red-500 uppercase tracking-wide">Wipe & Migration</div>
+                </Card>
             </div>
 
             {/* Dynamic Widgets Section */}
@@ -310,7 +320,7 @@ export default function AdminDashboardPage() {
                                             onClick={handleFixPhotos}
                                             disabled={maintenanceLoading}
                                         >
-                                            {maintenanceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Run Fix"}
+                                            {maintenanceLoading ? <CoinLoader size={16} /> : "Run Fix"}
                                         </Button>
                                     </div>
 
@@ -329,7 +339,7 @@ export default function AdminDashboardPage() {
                                             onClick={handleBackfillWelcomeKit}
                                             disabled={maintenanceLoading}
                                         >
-                                            {maintenanceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Run Backfill"}
+                                            {maintenanceLoading ? <CoinLoader size={16} /> : "Run Backfill"}
                                         </Button>
                                     </div>
                                 </div>

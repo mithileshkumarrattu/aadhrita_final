@@ -143,7 +143,7 @@ export interface StaffCredential {
     id?: string; // Document ID (usually username or auto-id, let's use username for uniqueness if possible, or auto-id)
     username: string; // Unique Login ID
     password: string; // Simple password as requested
-    role: 'security' | 'coordinator' | 'hackathon_coordinator' | 'entrypass_viewer' | 'registrations_viewer';
+    role: 'security' | 'coordinator' | 'hackathon_coordinator' | 'entrypass_viewer' | 'registrations_viewer' | 'convener' | 'onspot_coordinator' | 'fyfp_coordinator' | 'merchandise' | 'campus_manager';
     assignedEventId?: string | null; // For coordinators: The ID of the event they manage
     createdAt?: any;
 }
@@ -221,6 +221,7 @@ export interface Event {
     coordinators?: string[];     // Emails for custom access
     pptUrl?: string; // Optional: To provide a sample/template
     rulebookUrl?: string; // Optional: Link to rulebook
+    status?: string; // e.g. 'cancelled'
     schedule?: string;
     venue?: string;
     date?: string; // e.g. "2026-03-12"

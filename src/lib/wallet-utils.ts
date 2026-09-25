@@ -7,8 +7,14 @@ const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-secret-key-change-
 const RPC_URL = process.env.RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
 const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY;
 
-// Provider for read operations
-export const provider = new ethers.JsonRpcProvider(RPC_URL);
+// Lazy provider to prevent top-level Vercel Edge crashes
+let _provider: ethers.JsonRpcProvider | null = null;
+export const getProvider = (): ethers.JsonRpcProvider => {
+    if (!_provider) {
+        _provider = new ethers.JsonRpcProvider(RPC_URL);
+    }
+    return _provider;
+};
 
 /**
  * Creates a new random wallet and encrypts its private key.
@@ -66,7 +72,7 @@ export function decryptPrivateKey(encryptedKey: string): string {
  */
 export function getWalletInstance(encryptedKey: string) {
     const privateKey = decryptPrivateKey(encryptedKey);
-    return new ethers.Wallet(privateKey, provider);
+    return new ethers.Wallet(privateKey, getProvider());
 }
 
 /**
@@ -78,11 +84,11 @@ export function isValidAddress(address: string): boolean {
 
 export function getAdminWallet() {
     if (!ADMIN_PRIVATE_KEY) throw new Error('ADMIN_PRIVATE_KEY is not set in environment variables');
-    return new ethers.Wallet(ADMIN_PRIVATE_KEY, provider);
+    return new ethers.Wallet(ADMIN_PRIVATE_KEY, getProvider());
 }
 
 export function getTokenContract(signerOrProvider?: ethers.Signer | ethers.Provider) {
-    return new Contract(AAHT_TOKEN_ADDRESS, AAHT_ABI, signerOrProvider || provider);
+    return new Contract(AAHT_TOKEN_ADDRESS, AAHT_ABI, signerOrProvider || getProvider());
 }
 
 // Helper to fund a new wallet with some ETH for gas

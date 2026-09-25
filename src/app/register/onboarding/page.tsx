@@ -16,9 +16,10 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, UploadCloud, ArrowLeft, ArrowRight, AlertCircle, Sparkles, Building2, UserCircle2, MapPin, Users, HelpCircle, ChevronRight, CheckCircle, Calendar, Camera, X } from 'lucide-react';
+import { UploadCloud, ArrowLeft, ArrowRight, AlertCircle, Sparkles, Building2, UserCircle2, MapPin, Users, HelpCircle, ChevronRight, CheckCircle, Calendar, Camera, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 import { Cinzel } from 'next/font/google';
 import { EventRegistrationCard } from '@/components/events/EventRegistrationCard';
 import { EVENT_CATEGORIES } from '@/lib/constants';
@@ -51,6 +52,19 @@ export default function OnboardingPage() {
     const [pageLoading, setPageLoading] = React.useState(true);
     const [availableEvents, setAvailableEvents] = React.useState<Event[]>([]);
     const [hasPass, setHasPass] = React.useState(false);
+
+    // Deadline Logic
+    const [isAfterDeadline, setIsAfterDeadline] = React.useState(false);
+    React.useEffect(() => {
+        const checkDeadline = () => {
+            // Deadline: March 6th, 12:00 AM
+            const DEADLINE = new Date('2026-03-06T00:00:00+05:30');
+            setIsAfterDeadline(new Date() > DEADLINE);
+        };
+        checkDeadline();
+        const timer = setInterval(checkDeadline, 10000);
+        return () => clearInterval(timer);
+    }, []);
 
     // File Upload State
     const [uploading, setUploading] = React.useState<string | null>(null);
@@ -124,8 +138,9 @@ export default function OnboardingPage() {
 
                 // IMMEDIATE CHECK: If User Profile already has pass, block access immediately.
                 if (userProfile?.hasEntryPass) {
-                    console.log("Entry Pass detected in User Profile. Blocking form.");
+                    console.log("Entry Pass detected in User Profile. Redirecting...");
                     setHasPass(true);
+                    router.replace('/dashboard');
                 }
 
                 setFormData(prev => ({
@@ -281,9 +296,13 @@ export default function OnboardingPage() {
         if (file.size > 15 * 1024 * 1024) { toast.error("File size must be < 15MB"); return; }
 
         toast.loading("Processing image...", { id: `compress_${field}` });
+
+        // Give the UI thread a moment to actually render the toast before we lock it up with Canvas operations
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         try {
             // Compress image aggressively before base64 encoding to prevent 10-minute freezes on mobile
-            const compressedBase64 = await compressImage(file, 1024);
+            const compressedBase64 = await compressImage(file, 800);
             toast.dismiss(`compress_${field}`);
 
             // Store in LocalStorage for persistence across reloads
@@ -557,35 +576,30 @@ export default function OnboardingPage() {
     const handleSubmit = async () => {
         if (!user) return;
         setLoading(true);
+        const toastId = "registration_process";
+        toast.loading("Starting registration...", { id: toastId });
+
         try {
             // --- FINAL SAFETY CHECK ---
             const userSnap = await getDoc(doc(db, COLLECTIONS.USERS, user.uid));
-            if (userSnap.exists() && userSnap.data().hasEntryPass) {
-                toast.error("You already have an Entry Pass!");
+            const existingData = userSnap.exists() ? userSnap.data() : {};
+
+            if (existingData.hasEntryPass) {
+                toast.error("You already have an Entry Pass!", { id: toastId });
                 window.location.href = '/dashboard';
                 return;
             }
 
-            // Legacy Check (for safety during migration)
-            const freshSnap = await getDoc(doc(db, COLLECTIONS.REGISTRATIONS, user.uid));
-            if (freshSnap.exists() && freshSnap.data().hasEntryPass) {
-                toast.error("You already have an Entry Pass!");
-                window.location.href = '/dashboard';
-                return;
-            }
-
-            // --- 0. Upload Images if Base64 ---
+            // --- 0. Upload Images if Base64 (Parallelized) ---
             let finalPhotoUrl = formData.photoUrl;
             let finalIdCardUrl = formData.idCardUrl;
 
             const uploadBase64 = async (base64Data: string, field: string) => {
                 let blob: Blob;
                 try {
-                    // Fast path: native fetch, 1000x faster and doesn't block UI thread
                     const res = await fetch(base64Data);
                     blob = await res.blob();
                 } catch (e) {
-                    // Fallback for extremely old WebViews
                     const arr = base64Data.split(',');
                     const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
                     const bstr = atob(arr[1]);
@@ -597,33 +611,36 @@ export default function OnboardingPage() {
                     blob = new Blob([u8arr], { type: mime });
                 }
 
-                // Fix: Generate Unique Filename
                 const uniqueSuffix = Date.now();
                 const file = new File([blob], `${field}_${uniqueSuffix}.jpg`, { type: 'image/jpeg' });
-
-                // Use a dedicated folder for Entry Pass uploads as requested
                 const folderName = 'entrypass';
-
-                // Prefix logic: Use RegNo + Name if available, else UserID
                 const safeName = (formData.fullName || 'User').replace(/[^a-zA-Z0-9]/g, '_');
                 const safeReg = (formData.regNo || user.uid).replace(/[^a-zA-Z0-9]/g, '_');
-
-                // Construct Prefix for ALL fields (ID and Photo) to avoid collisions
                 const type = field === 'idCardUrl' ? 'ID' : 'PHOTO';
                 const fileNamePrefix = `${safeReg}_${uniqueSuffix}_${type}`;
 
-                // Pass 'entrypass' as the preset override
                 return await uploadFile(file, user.uid, fileNamePrefix, folderName, 'image', 'entrypass');
             };
 
+            const uploadPromises = [];
             if (finalPhotoUrl?.startsWith('data:')) {
-                toast.info("Uploading Profile Photo...");
-                finalPhotoUrl = await uploadBase64(finalPhotoUrl, 'photoUrl');
+                uploadPromises.push((async () => {
+                    toast.loading("Uploading Profile Photo...", { id: toastId });
+                    finalPhotoUrl = await uploadBase64(finalPhotoUrl!, 'photoUrl');
+                })());
             }
             if (finalIdCardUrl?.startsWith('data:')) {
-                toast.info("Uploading ID Card...");
-                finalIdCardUrl = await uploadBase64(finalIdCardUrl, 'idCardUrl');
+                uploadPromises.push((async () => {
+                    toast.loading("Uploading ID Card...", { id: toastId });
+                    finalIdCardUrl = await uploadBase64(finalIdCardUrl!, 'idCardUrl');
+                })());
             }
+
+            if (uploadPromises.length > 0) {
+                await Promise.all(uploadPromises);
+            }
+
+            toast.loading("Saving your profile...", { id: toastId });
 
             // 1. Save Main Registration (Consolidated to USERS collection)
             const finalData: UserRegistration = {
@@ -632,29 +649,21 @@ export default function OnboardingPage() {
                 idCardUrl: finalIdCardUrl!,
                 userId: user.uid,
                 email: user.email!,
-                completed: false, // Will be set true by payment callback on success
+                completed: false,
                 createdAt: serverTimestamp(),
                 aftCoins: 0,
-                hasEntryPass: false, // Wait for Payment Success
+                hasEntryPass: false,
                 hasHackathonPass: false,
                 paidEventIds: formData.paidEventIds || [],
                 cityState: `${city}, ${state}`
             };
 
-            // Write profile data WITHOUT isOnboarded - the payment callback sets that on success.
-            // We must NOT write isOnboarded:true here or the AuthGuard will think the user is registered.
-            await setDoc(doc(db, COLLECTIONS.USERS, user.uid), {
-                ...finalData
-            }, { merge: true });
-
-            // LEGACY: Write minimal draft to registrations as well
+            await setDoc(doc(db, COLLECTIONS.USERS, user.uid), finalData, { merge: true });
             await setDoc(doc(db, COLLECTIONS.REGISTRATIONS, user.uid), finalData);
 
-            // Clear Drafts
             safeStorage.removeItem('draft_photoUrl');
             safeStorage.removeItem('draft_idCardUrl');
 
-            // Firestore rejects `undefined` values — strip them all recursively before any write
             const sanitiseForFirestore = (obj: any): any => {
                 if (obj === null || obj === undefined) return null;
                 if (Array.isArray(obj)) return obj.map(sanitiseForFirestore);
@@ -669,7 +678,10 @@ export default function OnboardingPage() {
             };
 
             // 2. Save Complex Event Registrations (Sub-collection)
+            const { createTeam, joinTeam } = await import('@/lib/team-logic');
+
             for (const event of complexEvents) {
+                toast.loading(`Registering for ${event.title}...`, { id: toastId });
                 const resp = eventResponses[event.id!];
                 if (!resp) continue;
 
@@ -677,10 +689,8 @@ export default function OnboardingPage() {
                 let resolvedTeamId = resp.teamId || '';
                 let resolvedTeamName = resp.teamName || '';
 
-                // --- TEAM LEADER: Create entry in 'teams' collection to generate readable teamId ---
                 if (isTeamEvent && resp.isTeamLeader && resp.teamName?.trim()) {
                     try {
-                        const { createTeam } = await import('@/lib/team-logic');
                         const readableId = await createTeam(
                             event.id!,
                             resp.teamName.trim(),
@@ -689,21 +699,17 @@ export default function OnboardingPage() {
                         );
                         resolvedTeamId = readableId;
                         resolvedTeamName = resp.teamName.trim();
-                        // Keep local state in sync so the payment step can reference it
                         setEventResponses(prev => ({
                             ...prev,
                             [event.id!]: { ...prev[event.id!], teamId: readableId }
                         }));
                     } catch (teamErr: any) {
-                        // If team creation fails (e.g. name already taken), abort with user-friendly message
-                        throw new Error(`Team creation failed for "${event.title}": ${teamErr.message || 'Unknown error'}`);
+                        throw new Error(`Team creation failed for "${event.title}": ${teamErr.message}`);
                     }
                 }
 
-                // --- TEAM MEMBER: Join the existing team in 'teams' collection ---
                 if (isTeamEvent && !resp.isTeamLeader && resp.teamId?.trim()) {
                     try {
-                        const { joinTeam } = await import('@/lib/team-logic');
                         const joinedData = await joinTeam(event.id!, resp.teamId.trim(), {
                             uid: user.uid,
                             name: formData.fullName || user.displayName || user.uid,
@@ -712,12 +718,10 @@ export default function OnboardingPage() {
                         resolvedTeamId = joinedData.resolvedTeamId;
                         resolvedTeamName = joinedData.resolvedTeamName;
                     } catch (joinErr: any) {
-                        // joinTeam throws if the team is full/locked/invalid — surface it clearly
-                        throw new Error(`Could not join team "${resp.teamId}" for "${event.title}": ${joinErr.message || 'Unknown error'}`);
+                        throw new Error(`Could not join team "${resp.teamId}" for "${event.title}": ${joinErr.message}`);
                     }
                 }
 
-                // Build responses object — only include defined fields
                 const responsesObj: Record<string, any> = {};
                 if (resolvedTeamName) responsesObj.teamName = resolvedTeamName;
                 if (resolvedTeamId) responsesObj.teamId = resolvedTeamId;
@@ -732,8 +736,8 @@ export default function OnboardingPage() {
                     userId: user.uid,
                     paymentStatus: 'pending',
                     status: 'active',
-                    teamId: resolvedTeamId || null,       // top-level for easy querying
-                    teamName: resolvedTeamName || null,   // top-level for easy querying
+                    teamId: resolvedTeamId || null,
+                    teamName: resolvedTeamName || null,
                     responses: responsesObj,
                     teamMembers: (resp.isTeamLeader && resp.teamMembers && resp.teamMembers.length > 0)
                         ? resp.teamMembers.map(m => ({
@@ -748,20 +752,17 @@ export default function OnboardingPage() {
                     createdAt: serverTimestamp()
                 });
 
-                await setDoc(
-                    doc(db, 'events', event.id!, 'registrations', user.uid),
-                    regPayload
-                );
+                await setDoc(doc(db, 'events', event.id!, 'registrations', user.uid), regPayload);
             }
 
             // --- 3. Initiate Payment (Paytm) ---
+            toast.loading("Initiating secure payment...", { id: toastId });
             const uniqueSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
-            const orderId = `ORD_${Date.now()}_${uniqueSuffix}`; // ~22 chars
+            const orderId = `ORD_${Date.now()}_${uniqueSuffix}`;
             const amount = pricing.total.toString();
 
-            // 15-second timeout so the user isn't stuck with an infinite spinner
             const paymentAbort = new AbortController();
-            const paymentTimeout = setTimeout(() => paymentAbort.abort(), 15000);
+            const paymentTimeout = setTimeout(() => paymentAbort.abort(), 20000);
 
             let response: Response;
             try {
@@ -781,7 +782,7 @@ export default function OnboardingPage() {
                 });
             } catch (fetchErr: any) {
                 if (fetchErr.name === 'AbortError') {
-                    throw new Error('Payment gateway is temporarily unreachable. Please check your internet connection and try again.');
+                    throw new Error('Payment gateway is temporarily unreachable. Please check your internet connection.');
                 }
                 throw fetchErr;
             } finally {
@@ -789,33 +790,35 @@ export default function OnboardingPage() {
             }
 
             const data = await response.json();
-
             if (!data.success || !data.txnToken) {
                 throw new Error(data.message || "Failed to initiate payment");
             }
 
-            // --- Short Circuit: If Initiate gave us the Link (Common in UPI Intent) ---
             if (data.deepLink) {
-                console.log("Deep Link received directly from Initiate:", data.deepLink);
-                // Navigate immediately — do NOT await before this on iOS (gesture context lost)
+                toast.success("Redirecting to payment...", { id: toastId });
                 window.location.href = data.deepLink;
                 return;
             }
 
-            // --- Payment Redirect ---
+            toast.loading("Opening payment page...", { id: toastId });
             const baseUrl = "https://securegw.paytm.in";
-            const paytmUrl = `${baseUrl}/theia/api/v1/showPaymentPage?mid=${data.mid}&orderId=${orderId}&txnToken=${data.txnToken}`;
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `${baseUrl}/theia/api/v1/showPaymentPage?mid=${data.mid}&orderId=${orderId}`;
 
-            // IMPORTANT: On iOS Safari, any `await` before window.location.href can cause
-            // the browser to treat the navigation as an unsolicited popup and block it.
-            // Fire the redirect immediately
-            toast.info("Opening payment gateway...", { duration: 5000 });
-            window.location.assign(paytmUrl);
+            const tokenInput = document.createElement('input');
+            tokenInput.type = 'hidden';
+            tokenInput.name = 'txnToken';
+            tokenInput.value = data.txnToken;
+            form.appendChild(tokenInput);
+
+            document.body.appendChild(form);
+            form.submit();
             return;
 
         } catch (error: any) {
             console.error(error);
-            toast.error(error.message || "Registration failed. Please try again.");
+            toast.error(error.message || "Registration failed. Please try again.", { id: toastId });
             setLoading(false);
         }
     };
@@ -848,14 +851,6 @@ export default function OnboardingPage() {
         return grouped;
     }, [availableEvents]);
 
-    if (authLoading) {
-        return (
-            <div className="min-h-screen w-full flex flex-col items-center justify-center bg-black gap-4">
-                <Loader2 className="w-10 h-10 animate-spin text-red-600" />
-                <p className="text-neutral-500 text-sm animate-pulse">Authenticating...</p>
-            </div>
-        );
-    }
 
     // Note: Previously there was a hard return here if (hasPass) { ... }
     // which blocked users who already had an entry pass from registering for Hackathon/Other events.
@@ -868,6 +863,48 @@ export default function OnboardingPage() {
             showStep={true} currentStep={currentStep} totalSteps={STEPS.length} steps={STEPS}
             backgroundImage="/bg-onboarding.webp"
         >
+            {/* Deadline Blockade for New Users */}
+            {isAfterDeadline && !hasPass && (
+                <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-6 text-center">
+                    <div className="max-w-md w-full space-y-8 animate-in zoom-in duration-500">
+                        <div className="relative mx-auto w-24 h-24">
+                            <div className="absolute inset-0 bg-red-600/20 blur-3xl rounded-full" />
+                            <div className="relative flex items-center justify-center w-24 h-24 rounded-full border-2 border-red-600/50 bg-black shadow-[0_0_30px_rgba(220,38,38,0.3)]">
+                                <X className="w-12 h-12 text-red-600" />
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <h2 className={cn("text-3xl font-bold tracking-tight text-white", cinzel.className)}>
+                                Registrations Closed
+                            </h2>
+                            <p className="text-zinc-400 text-lg">
+                                The deadline for new Entry Pass registrations was March 5th, 11:59 PM.
+                            </p>
+                        </div>
+
+                        <div className="pt-8 border-t border-white/10">
+                            <p className="text-zinc-500 text-sm mb-6 uppercase tracking-widest font-semibold">
+                                Already have a pass?
+                            </p>
+                            <Button
+                                onClick={() => router.push('/dashboard')}
+                                className="w-full h-14 bg-white text-black hover:bg-zinc-200 font-bold rounded-2xl shadow-2xl transition-all"
+                            >
+                                Go to Dashboard
+                            </Button>
+                        </div>
+
+                        <button
+                            onClick={() => router.push('/')}
+                            className="text-zinc-500 hover:text-white transition-colors text-sm font-medium"
+                        >
+                            Return to landing page
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* --- Entry Pass Holder Banner --- */}
             {hasPass && (
                 <div className="max-w-4xl mx-auto mb-8 animate-in slide-in-from-top-4 duration-500">
@@ -925,7 +962,7 @@ export default function OnboardingPage() {
                                             />
                                         ) : (
                                             <div className="flex flex-col items-center gap-2">
-                                                {uploading === 'photoUrl' ? <Loader2 className="w-8 h-8 text-red-500 animate-spin" /> : <UserCircle2 className="w-12 h-12 text-neutral-600" />}
+                                                {uploading === 'photoUrl' ? <CoinLoader size={32} /> : <UserCircle2 className="w-12 h-12 text-neutral-600" />}
                                                 <span className="text-[10px] text-neutral-500 font-bold uppercase">Add Photo</span>
                                             </div>
                                         )}
@@ -1017,6 +1054,7 @@ export default function OnboardingPage() {
                                         <SelectItem value="CIC(Data Engg)">CIC(Data Engg)</SelectItem>
                                         <SelectItem value="CSM(Data Engg)">CSM(Data Engg)</SelectItem>
                                         <SelectItem value="CSD(Data Engg)">CSD(Data Engg)</SelectItem>
+                                        <SelectItem value="OTHERS">OTHERS</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -1052,7 +1090,7 @@ export default function OnboardingPage() {
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center py-3">
-                                        {uploading === 'idCardUrl' ? (<Loader2 className="w-8 h-8 text-red-600 animate-spin" />) : (
+                                        {uploading === 'idCardUrl' ? (<CoinLoader size={32} />) : (
                                             <div className="flex gap-3">
                                                 <Button size="sm" variant="secondary" className="h-9 text-xs font-bold px-4 rounded-full bg-neutral-800 text-white hover:bg-neutral-700 border border-white/20" onClick={() => idInputRef.current?.click()}>
                                                     <UploadCloud className="w-4 h-4 mr-1.5" />Gallery
@@ -1178,7 +1216,7 @@ export default function OnboardingPage() {
                 !hasPass && currentStep === 2 && (
                     <div className="space-y-8 max-w-4xl mx-auto">
                         <div className="text-center mb-6"><h2 className={cn("text-2xl font-bold text-neutral-200 mb-2", cinzel.className)}>Select Your Events</h2><p className="text-sm text-neutral-400">Add paid events to your pass (₹100 each). You can also add these later!</p></div>
-                        {pageLoading ? (<div className="py-20 flex justify-center"><Loader2 className="w-10 h-10 animate-spin text-red-600" /></div>) : (
+                        {pageLoading ? (<div className="py-20 flex justify-center"><CoinLoader size={40} /></div>) : (
                             <div className="space-y-10">
                                 <div className="space-y-4">
                                     {EVENT_CATEGORIES.map((catDef) => {
@@ -1508,7 +1546,7 @@ export default function OnboardingPage() {
                             )}
                         >
                             {loading ? (
-                                <><Loader2 className="w-4 h-4 md:w-5 md:h-5 mr-2 animate-spin" /> <span className="hidden md:inline">Verifying...</span><span className="md:hidden">Wait...</span></>
+                                <><CoinLoader size={20} /> <span className="hidden md:inline ml-2">Verifying...</span><span className="md:hidden ml-2">Wait...</span></>
                             ) : (
                                 <>
                                     {currentStep === 2 && (!formData.paidEventIds || formData.paidEventIds.length === 0)

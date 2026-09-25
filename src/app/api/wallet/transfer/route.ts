@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase-admin';
-import { getWalletInstance, getTokenContract, getAdminWallet, provider } from '@/lib/wallet-utils';
-import { parseEther, formatEther } from 'ethers';
+import { getWalletInstance, getTokenContract, getAdminWallet, getProvider } from '@/lib/wallet-utils';
+import { parseEther, formatEther, parseUnits } from 'ethers';
 import { FieldValue } from 'firebase-admin/firestore';
+import { verifyUserRequest } from '@/lib/api-auth';
 
 export async function POST(request: Request) {
-    try {
-        const { userId, toAddress, amount } = await request.json();
+    const auth = await verifyUserRequest(request);
+    if (!auth.ok) return auth.response;
+    const userId = auth.uid;
 
-        if (!userId || !toAddress || !amount) {
+    try {
+        const { toAddress, amount } = await request.json();
+
+        if (!toAddress || !amount) {
             return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
         }
 
@@ -53,9 +58,8 @@ export async function POST(request: Request) {
         }
 
         // 4. Auto-Fund Gas (The Magic)
-        // Check if user has enough ETH for gas (~0.001 ETH usually enough for transfer)
-        const userEthBalance = await provider.getBalance(fromAddress);
-        const MIN_GAS_THRESHOLD = parseEther("0.002"); // 0.002 ETH buffer
+        const userEthBalance = await getProvider().getBalance(fromAddress);
+        const MIN_GAS_THRESHOLD = parseEther("0.002");
 
         if (userEthBalance < MIN_GAS_THRESHOLD) {
             console.log(`User ${fromAddress} low on gas (${formatEther(userEthBalance)} ETH). Funding...`);
@@ -63,7 +67,7 @@ export async function POST(request: Request) {
                 const adminWallet = getAdminWallet();
                 const fundTx = await adminWallet.sendTransaction({
                     to: fromAddress,
-                    value: parseEther("0.005") // Send 0.005 ETH to be safe
+                    value: parseEther("0.005")
                 });
                 await fundTx.wait();
                 console.log(`Funded user: ${fundTx.hash}`);
@@ -73,12 +77,17 @@ export async function POST(request: Request) {
             }
         }
 
-        // 5. Execute Transfer (Signed by User)
-        // Now user definitely has gas
-        const tx = await contract.transfer(toAddress, amountWei);
+        // 5. Execute Transfer (Signed by User) with Auto Fast Fee
+        const provider = getProvider();
+        const feeData = await provider.getFeeData();
+
+        const tx = await contract.transfer(toAddress, amountWei, {
+            maxFeePerGas: feeData.maxFeePerGas ?? parseUnits("20", "gwei"),
+            maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? parseUnits("2", "gwei")
+        });
 
         // 6. Wait for confirmation
-        const receipt = await tx.wait();
+        const receipt = await tx.wait(1);
 
         // 7. Log Transaction
         await adminDb.collection('transactions').add({

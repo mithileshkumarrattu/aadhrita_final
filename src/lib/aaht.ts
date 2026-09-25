@@ -2,7 +2,8 @@ import { createPublicClient, http, Address } from 'viem';
 import { sepolia } from 'viem/chains';
 
 // Token Details
-export const AAHT_TOKEN_ADDRESS = '0xc66936ccd191CB849aD73e839e6486b8088a3072';
+// Token Details - Can be overridden by NEXT_PUBLIC_TOKEN_ADDRESS in Vercel
+export const AAHT_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_TOKEN_ADDRESS || '0xc66936ccd191CB849aD73e839e6486b8088a3072') as Address;
 export const AAHT_SYMBOL = 'AFT';
 export const AAHT_DECIMALS = 18;
 
@@ -46,6 +47,52 @@ export const AAHT_ABI = [
         ],
         "name": "mintReward",
         "outputs": [],
+        "type": "function",
+        "stateMutability": "nonpayable"
+    },
+    {
+        "constant": false,
+        "inputs": [
+            { "name": "to", "type": "address" },
+            { "name": "amount", "type": "uint256" }
+        ],
+        "name": "mint",
+        "outputs": [],
+        "type": "function",
+        "stateMutability": "nonpayable"
+    },
+    // ERC20 Delegation
+    {
+        "constant": true,
+        "inputs": [
+            { "name": "owner", "type": "address" },
+            { "name": "spender", "type": "address" }
+        ],
+        "name": "allowance",
+        "outputs": [{ "name": "", "type": "uint256" }],
+        "type": "function",
+        "stateMutability": "view"
+    },
+    {
+        "constant": false,
+        "inputs": [
+            { "name": "spender", "type": "address" },
+            { "name": "amount", "type": "uint256" }
+        ],
+        "name": "approve",
+        "outputs": [{ "name": "", "type": "bool" }],
+        "type": "function",
+        "stateMutability": "nonpayable"
+    },
+    {
+        "constant": false,
+        "inputs": [
+            { "name": "sender", "type": "address" },
+            { "name": "recipient", "type": "address" },
+            { "name": "amount", "type": "uint256" }
+        ],
+        "name": "transferFrom",
+        "outputs": [{ "name": "", "type": "bool" }],
         "type": "function",
         "stateMutability": "nonpayable"
     }

@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { db, COLLECTIONS, Event } from '@/lib/db';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 export default function CoordinatorDashboard() {
     const { user } = useAuth();
@@ -42,7 +43,7 @@ export default function CoordinatorDashboard() {
     if (loading) {
         return (
             <div className="flex justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-slate-300" />
+                <CoinLoader size={48} text="Gathering Assigned Events..." />
             </div>
         );
     }

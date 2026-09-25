@@ -17,7 +17,7 @@ import { Cinzel } from 'next/font/google';
 const cinzel = Cinzel({ subsets: ['latin'], weight: ['400', '700'] });
 
 const PHONE_REGEX = /^[6-9]\d{9}$/;
-const REGISTRATION_DEADLINE = new Date('2026-03-03T12:00:00+05:30'); // March 3, 2026 12:00 PM IST
+const REGISTRATION_DEADLINE = new Date('2026-03-05T12:00:00+05:30'); // March 3, 2026 12:00 PM IST
 const MAX_TEAMS = 144;
 
 interface Player {

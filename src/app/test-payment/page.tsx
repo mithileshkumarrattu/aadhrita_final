@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { Loader2, ArrowLeft, Wallet, CreditCard, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Wallet, CreditCard, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Cinzel } from 'next/font/google';
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 const cinzel = Cinzel({ subsets: ['latin'] });
 
@@ -185,7 +186,7 @@ export default function TestPaymentPage() {
                                 disabled={loading}
                                 className="w-full h-14 bg-gradient-to-r from-red-600 to-red-800 hover:from-red-500 hover:to-red-700 text-white font-bold text-lg rounded-xl shadow-lg shadow-red-900/20 mt-4"
                             >
-                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5 mr-2" />}
+                                {loading ? <CoinLoader size={20} /> : <CreditCard className="w-5 h-5 mr-2" />}
                                 {loading ? 'Initializing...' : `Pay ₹${formData.amount}`}
                             </Button>
 

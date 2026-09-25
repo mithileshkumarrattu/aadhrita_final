@@ -35,7 +35,7 @@ export default function SupportPage() {
                         <Mail className="w-10 h-10 text-red-500 mb-4 group-hover:scale-110 transition-transform" />
                         <h3 className={cn("text-2xl font-bold text-white mb-2", cinzel.className)}>Email Support</h3>
                         <p className="text-neutral-400 mb-4">For general queries and payment issues.</p>
-                        <a href="mailto:support@mvgrce.com" className="text-red-400 hover:text-red-300 font-medium">support.aadhrita@mvgrce.edu.in</a>
+                        <a href="mailto:support.aadhrita@mvgrce.edu.in" className="text-red-400 hover:text-red-300 font-medium">support.aadhrita@mvgrce.edu.in</a>
                     </div>
                     <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-2xl hover:bg-white/10 transition-colors group">
                         <Phone className="w-10 h-10 text-amber-500 mb-4 group-hover:scale-110 transition-transform" />
@@ -78,6 +78,10 @@ export default function SupportPage() {
 
                     <div className="space-y-4">
                         <FaqItem
+                            question="Is there an entry fee?"
+                            answer="Yes, the registration fee is ₹200 for MVGR students and ₹300 for non-MVGR students. This includes an Entry Pass to the festival. Additional technical events cost ₹100 each."
+                        />
+                        <FaqItem
                             question="My payment failed but amount was deducted. What to do?"
                             answer="Don't worry. If the amount was deducted, it is usually refunded automatically within 5-7 business days. If not, please email us with your Order ID and Transaction screenshot."
                         />
@@ -87,7 +91,7 @@ export default function SupportPage() {
                         />
                         <FaqItem
                             question="Can I register for multiple events?"
-                            answer="Yes! You can add multiple events during registration or later from your Dashboard."
+                            answer="Yes! You can add multiple events during registration or later from your Dashboard. Each additional technical event costs ₹100."
                         />
                         <FaqItem
                             question="Is accommodation available?"

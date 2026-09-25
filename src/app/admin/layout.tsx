@@ -6,14 +6,29 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Users, Calendar, Bell, FileText, LayoutDashboard, LogOut, BookOpen, Wallet, Menu as MenuIcon, X, Trophy, Ticket, ClipboardList, Image as ImageIcon, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { AUTHORIZED_ADMIN_EMAILS } from '@/lib/constants';
+
+import { CoinLoader } from '@/components/ui/CoinLoader';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-    const { userProfile, logout } = useAuth();
+    const { userProfile, loading, profileLoading, logout } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
     const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
-    if (userProfile && userProfile.role !== 'admin') {
+    // AUTHORIZED_ADMIN_EMAILS moved to constants.ts
+
+    if (loading || profileLoading) {
+        return <div className="min-h-screen flex items-center justify-center bg-slate-50"><CoinLoader /></div>;
+    }
+
+    if (!userProfile) {
+        router.push('/login');
+        return null;
+    }
+
+    const isAuthorizedEmail = AUTHORIZED_ADMIN_EMAILS.includes((userProfile.email || '').toLowerCase());
+    if (userProfile.role !== 'admin' && !isAuthorizedEmail) {
         router.push('/dashboard');
         return null;
     }

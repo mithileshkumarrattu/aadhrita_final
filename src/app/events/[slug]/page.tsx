@@ -52,8 +52,8 @@ export default function CategoryPage() {
                 const filtered = allEvents.filter(e => {
                     const cat = (e.category || '').toLowerCase();
                     const id = (e.id || '').toLowerCase();
-                    // Never show hackathon or flagship on category browse
-                    if (cat.includes('hackathon') || cat.includes('flagship') || id === 'hackathon') return false;
+                    // Never show hackathon or flagship on category browse, and hide cancelled events
+                    if (cat.includes('hackathon') || cat.includes('flagship') || id === 'hackathon' || e.status === 'cancelled') return false;
                     // Match by valid category
                     return validCategories.some(validCat =>
                         cat.includes(validCat.toLowerCase()) ||
