@@ -15,13 +15,6 @@ export default function PaymentForm() {
         customAmount: "",
     });
 
-    const passPrices: any = {
-        standard: 499,
-        vip: 799,
-        group: 1999,
-        custom: 0,
-    };
-
     const handleChange = (e: any) => {
         const { name, value } = e.target;
         setFormData((prev) => ({
